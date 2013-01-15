@@ -1,0 +1,95 @@
+#!/usr/bin/env python
+# manatee
+
+from __future__ import print_function
+
+from optparse import OptionParser
+import os
+
+from mainwindow import MainWindow
+import manateelog
+from manateelog import get_log_from_file, write_log_to_file
+
+import logging
+from debug import LOGGER
+
+class Manatee (object):
+
+    """Manatee app."""
+
+    def __init__ (self):
+        self.filename = ''
+        self.window = None
+
+    def run (self, args=[]):
+        usage = 'usage: %prog {[log file]}'
+        parser = OptionParser (version=0.1, usage=usage)
+        parser.add_option ('--loglevel', dest='loglevel',
+                default='WARN', metavar='LEVEL',
+                help='use \'logging\' module log level LEVEL')
+        parser.add_option ('-n', '--new', dest='new',
+                default=False, action='store_true',
+                help='load a new log rather than the last used one')
+        opts, args = parser.parse_args ()
+
+        logging.root.setLevel (logging.__dict__[opts.loglevel])
+
+        if len (args) == 1:
+            filename = args[0]
+            if os.path.exists (filename):
+                self.load_file (filename)
+            else:
+                parser.error ('"{0}" does not exist'.format (filename))
+        elif len (args) > 1:
+            parser.error ('only one filename may be given')
+        else:
+            if os.path.exists (self.last_file) and not opts.new:
+                with open (self.last_file) as f:
+                    filename = f.readline ().rstrip ()
+                if filename and os.path.exists (filename):
+                    self.load_file (filename)
+
+        if self.window is None:
+            self.window = MainWindow (self)
+            self.log = self.window.log
+
+        self.window.main ()
+
+        # cleanup at end
+        if not os.path.exists (self.conf_dir):
+            os.makedirs (self.conf_dir)
+        with open (self.last_file, 'wt') as f:
+            print (self.filename, file=f)
+
+    @property
+    def conf_dir (self):
+        home = os.getenv ('HOME')
+        return os.path.join (home, '.config', 'manatee')
+
+    @property
+    def last_file (self):
+        return os.path.join (self.conf_dir, 'last')
+
+    def load_file (self, filename):
+        self.filename = filename
+        self.log = get_log_from_file (filename)
+        if self.window is None:
+            self.window = MainWindow (self, self.log)
+        else:
+            self.window.set_log (self.log)
+
+    def new_log (self):
+        self.filename = ''
+        self.log = manateelog.Log ()
+        self.window.set_log (self.log)
+
+    def save (self):
+        write_log_to_file (self.log, self.filename)
+
+    def save_as (self, filename):
+        self.filename = filename
+        self.save ()
+
+if __name__ == '__main__':
+    app = Manatee ()
+    app.run ()
