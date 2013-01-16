@@ -85,6 +85,7 @@ class Manatee (object):
 
     def save (self):
         write_log_to_file (self.log, self.filename)
+        self.window.was_modified = False
 
     def save_as (self, filename):
         self.filename = filename
