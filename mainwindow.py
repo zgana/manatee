@@ -32,10 +32,15 @@ def printerr (*a, **kw):
         kw['file'] = sys.stderr
     print (*a, **kw)
 
-def remove_only_child (widget):
+def remove_first_child (widget):
     children = widget.get_children ()
     if children:
         widget.remove (children[0])
+
+def remove_last_child (widget):
+    children = widget.get_children ()
+    if children:
+        widget.remove (children[-1])
 
 def make_label (label):
     label = gtk.Label (label)
@@ -64,14 +69,16 @@ class MainWindow (object):
             self.set_log (Log ())
 
     def main (self):
+        LOG_F ()
         gtk.main ()
 
     def set_log (self, log):
+        LOG_F ()
         if self.window is None:
             self.window = gtk.Window (gtk.WINDOW_TOPLEVEL)
             self.window.connect ('delete_event', self.cb_delete_event)
         else:
-            remove_only_child (self.window)
+            remove_first_child (self.window)
         self.menu = Vars ()
         self.events = Vars ()
         self.log = log
@@ -197,7 +204,7 @@ class MainWindow (object):
         entry_pack_args = dict (expand=True, fill=True, padding=pad)
 
         box_main = self.setup.box_main
-        remove_only_child (box_main)
+        remove_first_child (box_main)
         box_main.set_border_width (pad)
         ### Meta
         frame_meta = gtk.Frame ('Log Properties')
@@ -321,6 +328,7 @@ class MainWindow (object):
 
     def build_pane_counting_entries (self):
         """Build the Counting Entries pane."""
+        LOG_F ()
         pad = self.pad
 
         box_main = self.counting.box_main
@@ -349,7 +357,6 @@ class MainWindow (object):
         ## the viewer
         self.counting.cem_sw = gtk.ScrolledWindow ()
         box_main.pack_start (self.counting.cem_sw, expand=True)
-        self.counting.cem_columns = {}
         self.sync_counting_entries ()
 
         ## add
@@ -414,6 +421,7 @@ class MainWindow (object):
 
     def build_pane_timing_entries (self):
         """Build the Timing Entries pane."""
+        LOG_F ()
         pad = self.pad
 
         box_main = self.timing.box_main
@@ -543,7 +551,9 @@ class MainWindow (object):
 
     def build_pane_analysis (self):
         """Build the Analysis pane."""
+        LOG_F ()
         pad = self.pad
+        self.ana.plot_type = None
 
         box_main = self.ana.box_main
         box_main.foreach (box_main.remove)
@@ -556,7 +566,6 @@ class MainWindow (object):
         combo = self.ana.combo = gtk.combo_box_new_text ()
         box_combo.pack_start (combo, True, padding=pad)
         combo.append_text ('line plot')
-        combo.append_text ('block plot')
         combo.set_active (0)
         combo.connect ('changed', self.sync_ana_plot_update)
 
@@ -574,18 +583,45 @@ class MainWindow (object):
         box_conf.pack_start (self.ana.tadm_sw, True, padding=pad)
         self.sync_ana_activities ()
 
-        box_opts = gtk.VBox (False, pad)
+        box_opts = self.ana.box_opts = gtk.VBox (False, 0)
         box_conf.pack_start (box_opts)
 
         self.ana.frame_plot = gtk.Frame ('Plot')
         paned.add2 (self.ana.frame_plot)
+        self.sync_ana_plot_update ()
+
+    def build_plot_options_line (self):
+        """Build the Analysis pane plot options frame."""
+        LOG_F ()
+        pad = self.pad
+        self.ana.opts = Vars ()
+        self.ana.plot_type = 0
+        box_opts = self.ana.box_opts
+        box_opts.foreach (box_opts.remove)
+
+        box_bin = gtk.HBox (False, 0)
+        box_opts.pack_start (box_bin, False)
+
+        self.ana.opts.spin_bin = spin = gtk.SpinButton ()
+        box_bin.pack_start (spin, False, padding=pad)
+        spin.set_adjustment (gtk.Adjustment (
+            value=1, lower=1, upper=sys.maxint, step_incr=1))
+        spin.connect (
+                'value-changed', self.sync_ana_plot_update)
+        box_bin.pack_start (make_label ('days per bin'))
+
+
+        self.ana.opts.check_zero = gtk.CheckButton ('Extend y-axis to 0',)
+        box_opts.pack_start (self.ana.opts.check_zero, False, padding=pad)
+
+        self.window.show_all ()
 
 
     def sync_counting_activities (self):
         """Sync counting activities view."""
         LOG_F ()
 
-        remove_only_child (self.setup.cam_sw)
+        remove_first_child (self.setup.cam_sw)
         self.setup.cam = CountingActivitiesModel (self.log)
         self.setup.cam_tv = gtk.TreeView (self.setup.cam)
         self.setup.cam_sw.add_with_viewport (self.setup.cam_tv)
@@ -607,7 +643,7 @@ class MainWindow (object):
         """Sync timing activities view."""
         LOG_F ()
 
-        remove_only_child (self.setup.tam_sw)
+        remove_first_child (self.setup.tam_sw)
         self.setup.tam = TimingActivitiesModel (self.log)
         self.setup.tam_tv = gtk.TreeView (self.setup.tam)
         self.setup.tam_sw.add_with_viewport (self.setup.tam_tv)
@@ -632,7 +668,7 @@ class MainWindow (object):
         activity_idx = self.counting.combo.get_active ()
         activity = sorted (self.log.counting_activities)[activity_idx]
 
-        remove_only_child (self.counting.cem_sw)
+        remove_first_child (self.counting.cem_sw)
         self.counting.cem = CountingEntriesModel (self.log, activity.name)
         self.counting.cem_tv = gtk.TreeView (self.counting.cem)
         self.counting.cem_sw.add_with_viewport (self.counting.cem_tv)
@@ -643,16 +679,15 @@ class MainWindow (object):
             cell = gtk.CellRendererText ()
             if name == 'note':
                 cell = cell_renderer_wrapped_note ()
-            col = self.counting.cem_columns[name] = gtk.TreeViewColumn (
-                    name, cell, text=idx)
+            col = gtk.TreeViewColumn (name, cell, text=idx)
             col.set_resizable (True)
             self.counting.cem_tv.insert_column (col, idx)
 
         add_col ('date', 0)
         add_col ('n', 1)
-        add_col ('error', 2)
+        add_col ('+/-', 2)
         add_col ('note', 3)
-        self.build_pane_analysis ()
+        self.sync_ana_plot_update ()
         self.window.show_all ()
 
     def sync_timing_entries (self):
@@ -665,7 +700,7 @@ class MainWindow (object):
         activity_idx = self.timing.combo.get_active ()
         activity = sorted (self.log.timing_activities)[activity_idx]
 
-        remove_only_child (self.timing.tem_sw)
+        remove_first_child (self.timing.tem_sw)
         self.timing.tem = TimingEntriesModel (self.log, activity.name)
         self.timing.tem_tv = gtk.TreeView (self.timing.tem)
         self.timing.tem_sw.add_with_viewport (self.timing.tem_tv)
@@ -684,13 +719,14 @@ class MainWindow (object):
         add_col ('start time', 0)
         add_col ('end time', 1)
         add_col ('note', 2)
-        self.build_pane_analysis ()
+        self.sync_ana_plot_update ()
         self.window.show_all ()
 
     def sync_ana_activities (self):
         """Sync activities in Analysis pane."""
+        LOG_F ()
         def do_sync (sw, activities):
-            remove_only_child (sw)
+            remove_first_child (sw)
             model = ActivityDrawModel (activities)
             model_tv = gtk.TreeView (model)
             sw.add_with_viewport (model_tv)
@@ -719,13 +755,19 @@ class MainWindow (object):
         self.ana.tadm = do_sync (self.ana.tadm_sw, self.log.timing_activities)
 
         self.window.show_all ()
-
+    
     def sync_ana_plot_update (self, *args):
         """Update the analysis plot."""
         LOG_F ()
-        remove_only_child (self.ana.frame_plot)
-        self.ana.frame_plot.set_label ('Plot')
+        try:
+            self.ana.combo
+        except:
+            return
+        self.ana_plot_clear ()
         if self.ana.combo.get_active () == 0:
+            if self.ana.plot_type != 0:
+                self.build_plot_options_line ()
+                self.ana.plot_type = 0
             self.ana_plot_line ()
         self.window.show_all ()
 
@@ -789,9 +831,12 @@ class MainWindow (object):
 
     # plotting ---------------------------------------------------------------
 
-    def ana_plot_create (self, *args):
+    def ana_plot_clear (self, *args):
         """Create the figure."""
-        self.ana.figure = mpl.figure.Figure (
+        LOG_F ()
+        self.ana.frame_plot.foreach (self.ana.frame_plot.remove)
+        self.ana.frame_plot.set_label ('Plot')
+        fig = self.ana.figure = mpl.figure.Figure (
                 figsize=(6, 4), dpi=50)
         self.ana.canvas = mplgtkagg.FigureCanvasGTKAgg (self.ana.figure)
         self.ana.frame_plot.add (self.ana.canvas)
@@ -811,6 +856,9 @@ class MainWindow (object):
         if np.sum (cadm.checks) == 0:
             one_unit = True
 
+
+        bin_width = self.ana.opts.spin_bin.get_value_as_int ()
+
         for i, activity in enumerate (cadm.activities):
             if cadm.checks[i]:
                 entries = self.log.entries[activity]
@@ -821,7 +869,7 @@ class MainWindow (object):
                 x = [datetime.date (ti.year, ti.month, ti.day)]
                 xf = datetime.date (tf.year, tf.month, tf.day)
                 while x[-1] < xf:
-                    x.append (x[-1] + datetime.timedelta (days=1))
+                    x.append (x[-1] + datetime.timedelta (days=bin_width))
                 y = []
                 err = []
                 for this_x in x:
@@ -867,7 +915,7 @@ class MainWindow (object):
                 x = [datetime.date (ti.year, ti.month, ti.day)]
                 xf = datetime.date (tf.year, tf.month, tf.day)
                 while x[-1] < xf:
-                    x.append (x[-1] + datetime.timedelta (days=1))
+                    x.append (x[-1] + datetime.timedelta (days=bin_width))
                 y = []
                 for this_x in x:
                     y.append (np.sum ([
@@ -897,7 +945,6 @@ class MainWindow (object):
         if not labels:
             return
 
-        self.ana_plot_create ()
         ax = self.ana.figure.add_subplot (111)
         ax.patch.set_facecolor ('white')
         for label, x, y, err, color, alpha in izip (
@@ -910,6 +957,8 @@ class MainWindow (object):
                 p, c, b = ax.errorbar (x, y - err, y + err, **kwargs)
                 for thing in np.r_[c, b]:
                     thing.set_alpha (alpha)
+        if self.ana.opts.check_zero:
+            ax.set_ylim (ymin=0)
         ax.set_ylim (ymin=max (ax.get_ylim ()[0], 0))
         if not one_unit:
             ax.legend (loc='best')
@@ -1011,6 +1060,7 @@ class MainWindow (object):
 
     def cb_notebook_page_switch (self, whence, page_num, *args):
         """Switch notebook page."""
+        LOG_F ()
         self.notebook.set_current_page (page_num)
 
     def cb_setup_meta_update (self, whence, *args):
@@ -1027,13 +1077,14 @@ class MainWindow (object):
         selection = self.setup.cam_tv.get_selection ()
         cam, rows = selection.get_selected_rows ()
         if not rows:
+            self.set_status ('counting', 'No activity selected.')
             return
         activity = sorted (self.log.counting_activities)[rows[0][0]]
         response = self.confirm (
                 'Remove activity "{0}"?'.format (activity.name),
                 'Confirm remove')
         if response == gtk.RESPONSE_OK:
-            remove_only_child (self.setup.cam_sw)
+            remove_first_child (self.setup.cam_sw)
             self.log.counting_activities.remove (activity)
             del self.log.entries[activity]
             self.sync_counting_activities ()
@@ -1055,6 +1106,7 @@ class MainWindow (object):
         LOG_F ()
         cam, rows = self.setup.cam_tv.get_selection ().get_selected_rows ()
         if not rows:
+            self.set_status ('counting', 'No activity selected.')
             return
         activity = sorted (self.log.counting_activities)[rows[0][0]]
         old_name, old_unit = activity.name, activity.unit
@@ -1091,7 +1143,7 @@ class MainWindow (object):
         LOG_F ()
         name = self.setup.entry_counting_add_name.get_text ()
         unit = self.setup.entry_counting_add_unit.get_text ()
-        remove_only_child (self.setup.cam_sw)
+        remove_first_child (self.setup.cam_sw)
         self.log.add_activity (CountingActivity (name, unit=unit))
         self.sync_counting_activities ()
         self.modify ('counting', 'Added activity "{0}".'.format (name))
@@ -1102,13 +1154,14 @@ class MainWindow (object):
         selection = self.setup.tam_tv.get_selection ()
         tam, rows = selection.get_selected_rows ()
         if not rows:
+            self.set_status ('timing', 'No activity selected.')
             return
         activity = sorted (self.log.timing_activities)[rows[0][0]]
         response = self.confirm (
                 'Remove activity "{0}"?'.format (activity.name),
                 'Confirm remove')
         if response == gtk.RESPONSE_OK:
-            remove_only_child (self.setup.tam_sw)
+            remove_first_child (self.setup.tam_sw)
             self.log.timing_activities.remove (activity)
             del self.log.entries[activity]
             self.sync_timing_activities ()
@@ -1129,6 +1182,7 @@ class MainWindow (object):
         LOG_F ()
         cam, rows = self.setup.tam_tv.get_selection ().get_selected_rows ()
         if not rows:
+            self.set_status ('timing', 'No activity selected.')
             return
         activity = sorted (self.log.timing_activities)[rows[0][0]]
         activity.name = self.setup.entry_timing_add_name.get_text ()
@@ -1137,14 +1191,16 @@ class MainWindow (object):
 
     def cb_setup_timing_add (self, whence, *args):
         """Add a timing activity."""
+        LOG_F ()
         name = self.setup.entry_timing_add_name.get_text ()
-        remove_only_child (self.setup.tam_sw)
+        remove_first_child (self.setup.tam_sw)
         self.log.add_activity (TimingActivity (name))
         self.sync_timing_activities ()
         self.modify ('timing', 'Added activity "{0}"'.format (name))
 
     def cb_counting_choose (self, whence, *args):
         """Choose the counting activity."""
+        LOG_F ()
         self.sync_counting_entries ()
 
     def cb_counting_select_entry (self, whence, *args):
@@ -1166,16 +1222,18 @@ class MainWindow (object):
 
     def cb_counting_rm_entry (self, whence, *args):
         """Remove a counting entry."""
+        LOG_F ()
         selection = self.counting.cem_tv.get_selection ()
         cam, rows = selection.get_selected_rows ()
         if not len (rows):
+            self.set_status ('counting', 'No entry selected.')
             return
         idx = rows[0][0]
         entries = self.counting.cem.entries
         entry = entries[idx]
         response = self.confirm ('Remove entry?', 'Confirm remove')
         if response == gtk.RESPONSE_OK:
-            remove_only_child (self.counting.cem_sw)
+            remove_first_child (self.counting.cem_sw)
             entries.pop (idx)
             self.sync_counting_entries ()
             self.modify (
@@ -1186,6 +1244,7 @@ class MainWindow (object):
         LOG_F ()
         cam, rows = self.counting.cem_tv.get_selection ().get_selected_rows ()
         if not rows:
+            self.set_status ('counting', 'No entry selected.')
             return
         activity_idx = self.counting.combo.get_active ()
         activity = sorted (self.log.counting_activities)[activity_idx]
@@ -1208,6 +1267,7 @@ class MainWindow (object):
 
     def cb_counting_add_entry (self, whence, *args):
         """Add a counting entry."""
+        LOG_F ()
         Y = self.counting.spin_Y.get_value_as_int ()
         M = self.counting.spin_M.get_value_as_int ()
         D = self.counting.spin_D.get_value_as_int ()
@@ -1218,7 +1278,7 @@ class MainWindow (object):
                 note_buffer.get_start_iter (),
                 note_buffer.get_end_iter ())
         entries = self.counting.cem.entries
-        remove_only_child (self.counting.cem_sw)
+        remove_first_child (self.counting.cem_sw)
         activity_idx = self.counting.combo.get_active ()
         activity = sorted (self.log.counting_activities)[activity_idx]
         date = datetime.date (Y, M, D)
@@ -1232,6 +1292,7 @@ class MainWindow (object):
 
     def cb_counting_add_change_month (self, whence, *args):
         """Limit the day according to the year and month."""
+        LOG_F ()
         day = 26
         Y = self.counting.spin_Y.get_value_as_int ()
         M = self.counting.spin_M.get_value_as_int ()
@@ -1245,6 +1306,7 @@ class MainWindow (object):
 
     def cb_timing_choose (self, whence, *args):
         """Choose the timing activity."""
+        LOG_F ()
         self.sync_timing_entries ()
 
     def cb_timing_select_entry (self, whence, *args):
@@ -1271,6 +1333,7 @@ class MainWindow (object):
 
     def cb_timing_now (self, whence, when, *args):
         """Set the time to now."""
+        LOG_F ()
         now = datetime.datetime.today ()
         if when == 'start':
             self.setup_timing_entries_add_start ()
@@ -1279,16 +1342,18 @@ class MainWindow (object):
 
     def cb_timing_rm_entry (self, whence, *args):
         """Remove a timing entry."""
+        LOG_F ()
         selection = self.timing.tem_tv.get_selection ()
         cam, rows = selection.get_selected_rows ()
         if not len (rows):
+            self.set_status ('timing', 'No entry selected.')
             return
         idx = rows[0][0]
         entries = self.timing.tem.entries
         entry = entries[idx]
         response = self.confirm ('Remove entry?', 'Confirm remove')
         if response == gtk.RESPONSE_OK:
-            remove_only_child (self.timing.tem_sw)
+            remove_first_child (self.timing.tem_sw)
             entries.pop (idx)
             self.sync_timing_entries ()
             self.modify ('timing', 'Removed entry starting at {0}'.format (
@@ -1299,6 +1364,7 @@ class MainWindow (object):
         LOG_F ()
         cam, rows = self.timing.tem_tv.get_selection ().get_selected_rows ()
         if not rows:
+            self.set_status ('timing', 'No entry selected.')
             return
         entries = self.timing.tem.entries
         entry = entries[rows[0][0]]
@@ -1327,6 +1393,7 @@ class MainWindow (object):
 
     def cb_timing_add_entry (self, whence, *args):
         """Add a timing entry."""
+        LOG_F ()
         sY = self.timing.spin_sY.get_value_as_int ()
         sM = self.timing.spin_sM.get_value_as_int ()
         sD = self.timing.spin_sD.get_value_as_int ()
@@ -1345,7 +1412,7 @@ class MainWindow (object):
                 note_buffer.get_end_iter ())
 
         entries = self.timing.tem.entries
-        remove_only_child (self.timing.tem_sw)
+        remove_first_child (self.timing.tem_sw)
         activity_idx = self.timing.combo.get_active ()
         activity = sorted (self.log.timing_activities)[activity_idx]
         start_time = datetime.datetime (sY, sM, sD, sh, sm)
@@ -1360,6 +1427,7 @@ class MainWindow (object):
 
     def cb_timing_add_change_start_month (self, whence, *args):
         """Limit the day according to the year and month."""
+        LOG_F ()
         day = 26
         Y = self.timing.spin_sY.get_value_as_int ()
         M = self.timing.spin_sM.get_value_as_int ()
@@ -1373,6 +1441,7 @@ class MainWindow (object):
 
     def cb_timing_add_change_end_month (self, whence, *args):
         """Limit the day according to the year and month."""
+        LOG_F ()
         day = 26
         Y = self.timing.spin_eY.get_value_as_int ()
         M = self.timing.spin_eM.get_value_as_int ()
@@ -1386,10 +1455,13 @@ class MainWindow (object):
 
     def cb_ana_activity_toggle (self, cell, path, model):
         """A counting activity was toggled for plotting."""
+        LOG_F ()
         model.toggle (path)
         self.sync_ana_plot_update ()
 
     def cb_ana_activity_choose_color (self, whence, path, column, model):
+        """Set the color of an activity."""
+        LOG_F ()
         cam, rows = whence.get_selection ().get_selected_rows ()
         if not rows:
             return
@@ -1415,6 +1487,7 @@ class MainWindow (object):
     # other ------------------------------------------------------------------
 
     def confirm (self, msg, title):
+        LOG_F ()
         dialog = gtk.MessageDialog (
                 self.window, gtk.DIALOG_MODAL,
                 gtk.MESSAGE_QUESTION, gtk.BUTTONS_OK_CANCEL,
@@ -1425,6 +1498,7 @@ class MainWindow (object):
         return response
 
     def yes_no_cancel (self, msg, title):
+        LOG_F ()
         dialog = gtk.MessageDialog (
                 self.window, gtk.DIALOG_MODAL,
                 gtk.MESSAGE_QUESTION, gtk.BUTTONS_NONE,
@@ -1440,6 +1514,7 @@ class MainWindow (object):
         return response
 
     def save_first (self):
+        LOG_F ()
         if not self.was_modified:
             return
         response = self.yes_no_cancel (
@@ -1454,11 +1529,13 @@ class MainWindow (object):
 
 
     def set_status (self, key, msg):
+        LOG_F ()
         if key not in self.status_keys:
             self.status_keys.append (key)
         context_id = self.status_keys.index (key)
         self.statusbar.push (context_id, msg)
 
     def modify (self, key, msg):
+        LOG_F ()
         self.was_modified = True
         self.set_status (key, msg)
