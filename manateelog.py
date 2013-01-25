@@ -156,16 +156,16 @@ class TimingEntry (object):
         cmp_end = cmp (a.end_time, b.end_time)
         return cmp_end
 
-    def hours_in_date (self, date):
-        """Get the amount of hours an entry contains during a given date."""
+    def overlap_in_hours (self, t1, t2=None):
+        """Get the amount of hours an entry contains during a given date or
+        time range."""
+        if t2 is None:
+            t1 = datetime.datetime (t1.year, t1.month, t1.day, 0, 0, 0, 0)
+            t2 = t1 + datetime.timedelta (days=1, microseconds=-1)
         s1 = self.start_time
-        s2 = datetime.datetime (
-                date.year, date.month, date.day,
-                0, 0, 0, 0)
+        s2 = t1
         e1 = self.end_time
-        e2 = datetime.datetime (
-                date.year, date.month, date.day,
-                23, 59, 59, 999999)
+        e2 = t2
         dt = min (e1, e2) - max (s1, s2)
         if dt < datetime.timedelta (seconds=0):
             return 0

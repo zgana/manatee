@@ -22,6 +22,7 @@ import numpy as np
 
 import manateelog
 from manateelog import Log, CountingActivity, TimingActivity
+import histlite
 from treemodels import *
 from vars_class import Vars
 from debug import LOGGER, LOG_F
@@ -868,17 +869,17 @@ class MainWindow (object):
                 tf = entries[-1].date
                 x = [datetime.date (ti.year, ti.month, ti.day)]
                 xf = datetime.date (tf.year, tf.month, tf.day)
-                while x[-1] < xf:
+                while x[-1] <= xf:
                     x.append (x[-1] + datetime.timedelta (days=bin_width))
                 y = []
                 err = []
-                for this_x in x:
+                for x1, x2 in izip (x[:-1], x[1:]):
                     y.append (np.sum ([
                         entry.n for entry in entries
-                        if entry.date == this_x]))
+                        if x1 <= entry.date < x2]))
                     err.append (np.sqrt (np.sum ([
                         entry.error**2 for entry in entries
-                        if entry.date == this_x])))
+                        if x1 <= entry.date < x2])))
                 x = np.array (x)
                 y = np.array (y)
                 err = np.array (err)
@@ -912,14 +913,14 @@ class MainWindow (object):
                     continue
                 ti = entries[0].start_time
                 tf = entries[-1].end_time
-                x = [datetime.date (ti.year, ti.month, ti.day)]
-                xf = datetime.date (tf.year, tf.month, tf.day)
-                while x[-1] < xf:
+                x = [datetime.datetime (ti.year, ti.month, ti.day)]
+                xf = datetime.datetime (tf.year, tf.month, tf.day)
+                while x[-1] <= xf:
                     x.append (x[-1] + datetime.timedelta (days=bin_width))
                 y = []
-                for this_x in x:
+                for x1, x2 in izip (x[:-1], x[1:]):
                     y.append (np.sum ([
-                        entry.hours_in_date (this_x)
+                        entry.overlap_in_hours (x1, x2)
                         for entry in entries]))
                 scale = 1.1 * np.max (y)
                 if one_unit:
@@ -940,23 +941,27 @@ class MainWindow (object):
                     color.red / colormax,
                     color.green / colormax,
                     color.blue / colormax))
-                alphas.append (cadm.alphas[i] / colormax)
+                alphas.append (tadm.alphas[i] / colormax)
 
         if not labels:
             return
 
         ax = self.ana.figure.add_subplot (111)
         ax.patch.set_facecolor ('white')
+        plotter = histlite.Plotter (ax)
         for label, x, y, err, color, alpha in izip (
                 labels, xs, ys, errs, colors, alphas):
-            kwargs = dict (label=label, color=color, alpha=alpha,
-                        linestyle='steps-mid', lw=1.4)
+            kwargs = dict (label=label, color=color, lw=1.4)
             if err is None:
-                ax.plot (x, y, **kwargs)
+                plotter.add (histlite.Line (x, y), **kwargs)
+                # ax.plot (x, y, **kwargs)
             else:
-                p, c, b = ax.errorbar (x, y - err, y + err, **kwargs)
-                for thing in np.r_[c, b]:
-                    thing.set_alpha (alpha)
+                plotter.add (histlite.Line (x, y, err),
+                        errorbars=True, **kwargs)
+                # p, c, b = ax.errorbar (x, y - err, y + err, **kwargs)
+                # for thing in np.r_[c, b]:
+                #     thing.set_alpha (alpha)
+        plotter.finish ()
         if self.ana.opts.check_zero:
             ax.set_ylim (ymin=0)
         ax.set_ylim (ymin=max (ax.get_ylim ()[0], 0))
