@@ -787,15 +787,16 @@ class MainWindow (object):
     def setup_counting_entries_add (self):
         LOG_F ()
         today = datetime.datetime.today ()
-        adj_Y = gtk.Adjustment (
-                value=today.year, lower=1900, upper=2200, step_incr=1)
-        adj_M = gtk.Adjustment (
-                value=today.month, lower=1, upper=12, step_incr=1)
-        adj_D = gtk.Adjustment (
-                value=today.day, lower=1, upper=31, step_incr=1)
-        self.counting.spin_Y.set_adjustment (adj_Y)
-        self.counting.spin_M.set_adjustment (adj_M)
-        self.counting.spin_D.set_adjustment (adj_D)
+
+        def setup (spin, value, lower, upper):
+            adj = gtk.Adjustment (
+                    value=value, lower=lower, upper=upper, step_incr=1)
+            spin.set_adjustment (adj)
+            spin.set_value (value)
+
+        setup (self.counting.spin_Y, today.year, 1900, 2200)
+        setup (self.counting.spin_M, today.month, 1, 12)
+        setup (self.counting.spin_D, today.day, 1, 31)
 
     def setup_timing_entries_add_start (self):
         LOG_F ()
