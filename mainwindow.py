@@ -22,8 +22,13 @@ import numpy as np
 
 import manateelog
 from manateelog import Log, CountingActivity, TimingActivity
+import manateeimport
+
+from treemodels import CountingActivitiesModel, TimingActivitiesModel
+from treemodels import CountingEntriesModel, TimingEntriesModel
+from treemodels import ActivityDrawModel
+
 import histlite
-from treemodels import *
 from vars_class import Vars
 from debug import LOGGER, LOG_F
 
@@ -49,6 +54,12 @@ def make_label (label):
     xalign = 0
     label.set_alignment (xalign, yalign)
     return label
+
+def add_filt (dialog, description, pattern):
+    filt = gtk.FileFilter ()
+    filt.set_name (description)
+    filt.add_pattern (pattern)
+    dialog.add_filter (filt)
 
 def cell_renderer_wrapped_note ():
     cell = gtk.CellRendererText ()
@@ -115,6 +126,10 @@ class MainWindow (object):
             ('Save As', gtk.STOCK_SAVE_AS, None, '<control><shift>s', None,
                 self.cb_save_as),
             ('Quit', gtk.STOCK_QUIT, None, '<control>q', None, self.cb_quit),
+
+            ('Import', None, '_Import', None, None, None),
+            ('TimeRecording', None, 'from _TimeRecording export...',
+                None, None, self.cb_import_timerecording),
             ]
         )
         self.menu.ui = """
@@ -128,6 +143,9 @@ class MainWindow (object):
                     <menuitem action='Save As' />
                     <separator />
                     <menuitem action='Quit' />
+                </menu>
+                <menu action='Import'>
+                    <menuitem action='TimeRecording' />
                 </menu>
             </menubar>
         </ui>
@@ -1003,14 +1021,8 @@ class MainWindow (object):
                 )
         dialog.set_default_response (gtk.RESPONSE_OK)
 
-        def add_filt (description, pattern):
-            filt = gtk.FileFilter ()
-            filt.set_name (description)
-            filt.add_pattern (pattern)
-            dialog.add_filter (filt)
-
-        add_filt ('Manatee files', '*.manatee')
-        add_filt ('All files', '*')
+        add_filt (dialog, 'Manatee files', '*.manatee')
+        add_filt (dialog, 'All files', '*')
 
         response = dialog.run ()
         if response == gtk.RESPONSE_OK:
@@ -1038,13 +1050,7 @@ class MainWindow (object):
                 )
         dialog.set_default_response (gtk.RESPONSE_OK)
 
-        def add_filt (description, pattern):
-            filt = gtk.FileFilter ()
-            filt.set_name (description)
-            filt.add_pattern (pattern)
-            dialog.add_filter (filt)
-
-        add_filt ('Manatee files', '*.manatee')
+        add_filt (dialog, 'Manatee files', '*.manatee')
 
         response = dialog.run ()
         if response == gtk.RESPONSE_OK:
@@ -1063,6 +1069,31 @@ class MainWindow (object):
         response = self.save_first ()
         if response != gtk.RESPONSE_CANCEL:
             gtk.main_quit ()
+
+    def cb_import_timerecording (self, whence, *args):
+        """Import from a TimeRecording export."""
+        LOG_F ()
+        dialog = gtk.FileChooserDialog ('Import from TimeRecording...',
+                None, gtk.FILE_CHOOSER_ACTION_OPEN,
+                (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
+                    gtk.STOCK_OPEN, gtk.RESPONSE_OK)
+                )
+        dialog.set_default_response (gtk.RESPONSE_OK)
+
+        add_filt (dialog, 'TimeRecording CSV files', '*.csv')
+        add_filt (dialog, 'All files', '*')
+
+        response = dialog.run ()
+        if response == gtk.RESPONSE_OK:
+            filename = dialog.get_filename ()
+        else:
+            filename = None
+        if filename:
+            importer = manateeimport.TimeRecordingImporter (filename, self.log)
+            n_imported = importer.do_import ()
+            self.sync_timing_activities ()
+            self.modify ('import', 'Imported {0} entries.'.format (n_imported))
+        dialog.destroy ()
 
     def cb_notebook_page_switch (self, whence, page_num, *args):
         """Switch notebook page."""
