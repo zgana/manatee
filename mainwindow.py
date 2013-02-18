@@ -602,7 +602,7 @@ class MainWindow (object):
         box_conf.pack_start (self.ana.tadm_sw, True, padding=pad)
         self.sync_ana_activities ()
 
-        box_opts = self.ana.box_opts = gtk.VBox (False, 0)
+        box_opts = self.ana.box_opts = gtk.VBox (False, pad)
         box_conf.pack_start (box_opts)
 
         self.ana.frame_plot = gtk.Frame ('Plot')
@@ -618,11 +618,11 @@ class MainWindow (object):
         box_opts = self.ana.box_opts
         box_opts.foreach (box_opts.remove)
 
-        box_bin = gtk.HBox (False, 0)
+        box_bin = gtk.HBox (False, pad)
         box_opts.pack_start (box_bin, False)
 
         self.ana.opts.spin_bin = spin = gtk.SpinButton ()
-        box_bin.pack_start (spin, False, padding=pad)
+        box_bin.pack_start (spin, False)
         spin.set_adjustment (gtk.Adjustment (
             value=1, lower=1, upper=sys.maxint, step_incr=1))
         spin.connect (
@@ -631,7 +631,14 @@ class MainWindow (object):
 
 
         self.ana.opts.check_zero = gtk.CheckButton ('Extend y-axis to 0',)
-        box_opts.pack_start (self.ana.opts.check_zero, False, padding=pad)
+        box_opts.pack_start (self.ana.opts.check_zero, False)
+        self.ana.opts.check_zero.set_active (True)
+        self.ana.opts.check_zero.connect ('toggled', self.sync_ana_plot_update)
+
+        self.ana.opts.check_errors = gtk.CheckButton ('Include errorbars',)
+        box_opts.pack_start (self.ana.opts.check_errors, False)
+        self.ana.opts.check_errors.set_active (True)
+        self.ana.opts.check_errors.connect ('toggled', self.sync_ana_plot_update)
 
         self.window.show_all ()
 
@@ -876,8 +883,17 @@ class MainWindow (object):
         if np.sum (cadm.checks) == 0:
             one_unit = True
 
+        def get_scale (y, err=0):
+            return np.ceil (.1 * np.max (y + err))
 
         bin_width = self.ana.opts.spin_bin.get_value_as_int ()
+
+        def get_label (name, unit, scale):
+            if one_unit or scale == 1:
+                return '{0} ({1})'.format (name, unit)
+            else:
+                return '{0} (1 / {1:.0f} {2})'.format (name, scale, unit)
+
 
         for i, activity in enumerate (cadm.activities):
             if cadm.checks[i]:
@@ -902,14 +918,11 @@ class MainWindow (object):
                 x = np.array (x)
                 y = np.array (y)
                 err = np.array (err)
-                scale = 1.1 * np.max (y + err)
-                if one_unit:
-                    labels.append ('{0} ({1})'.format (
-                        activity.name, activity.unit))
-                else:
-                    labels.append ('{0} (1 / {1:.1f} {2})'.format (
-                        activity.name, scale, activity.unit))
                 xs.append (x)
+                # TODO: decide how exactly to choose a scale
+                scale = get_scale (y, err)
+                labels.append (get_label (
+                    activity.name, activity.unit, scale))
                 if one_unit:
                     unit = activity.unit
                     ys.append (y)
@@ -941,15 +954,13 @@ class MainWindow (object):
                     y.append (np.sum ([
                         entry.overlap_in_hours (x1, x2)
                         for entry in entries]))
-                scale = 1.1 * np.max (y)
+                x = np.array (x)
+                y = np.array (y)
+                xs.append (x)
+                scale = get_scale (y)
+                labels.append (get_label (activity.name, 'hours', scale))
                 if one_unit:
                     unit = 'hours'
-                    labels.append ('{0} (hours)'.format (activity.name))
-                else:
-                    labels.append ('{0} (1 / {1:.1f} hours)'.format (
-                        activity.name, scale))
-                xs.append (x)
-                if one_unit:
                     ys.append (y)
                 else:
                     ys.append (y / scale)
@@ -965,30 +976,36 @@ class MainWindow (object):
         if not labels:
             return
 
+        errorbars = self.ana.opts.check_errors.get_active ()
         ax = self.ana.figure.add_subplot (111)
         ax.patch.set_facecolor ('white')
         plotter = histlite.Plotter (ax)
+        ymax = -np.inf
         for label, x, y, err, color, alpha in izip (
                 labels, xs, ys, errs, colors, alphas):
             kwargs = dict (label=label, color=color, lw=1.4)
-            if err is None:
+            if err is None or not errorbars:
                 plotter.add (histlite.Line (x, y), **kwargs)
                 # ax.plot (x, y, **kwargs)
+                ymax = max (ymax, np.max (y))
             else:
                 plotter.add (histlite.Line (x, y, err),
                         errorbars=True, **kwargs)
+                ymax = max (ymax, np.max (y + err))
                 # p, c, b = ax.errorbar (x, y - err, y + err, **kwargs)
                 # for thing in np.r_[c, b]:
                 #     thing.set_alpha (alpha)
         plotter.finish ()
-        if self.ana.opts.check_zero:
+        if self.ana.opts.check_zero.get_active ():
             ax.set_ylim (ymin=0)
-        ax.set_ylim (ymin=max (ax.get_ylim ()[0], 0))
+        ax.set_ylim (ymin=max (ax.get_ylim ()[0], 0), ymax=1.1 * ymax)
         if not one_unit:
             ax.legend (loc='best')
         ax.set_xlabel ('date')
         if one_unit:
             ax.set_ylabel (unit)
+
+        ax.grid (True)
 
 
     # callbacks --------------------------------------------------------------
