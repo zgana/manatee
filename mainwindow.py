@@ -1535,7 +1535,7 @@ class MainWindow (object):
             model.colors[row] = new_color
             model.alphas[row] = new_alpha
         self.set_status (
-                'ana', 'Updated color for "{0}"'.format (activity.name))
+                'ana', 'Updated color for "{0}".'.format (activity.name))
         self.sync_ana_plot_update ()
 
     # other ------------------------------------------------------------------
