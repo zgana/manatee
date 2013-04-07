@@ -601,14 +601,16 @@ class MainWindow (object):
         #box_conf.set_border_width (pad)
 
         self.ana.cadm_sw = gtk.ScrolledWindow ()
-        self.ana.cadm_sw.set_size_request (5, 150)
+        self.ana.cadm_sw.set_size_request (5, 180)
         box_conf.pack_start (self.ana.cadm_sw, True, padding=pad)
         self.ana.tadm_sw = gtk.ScrolledWindow ()
         box_conf.pack_start (self.ana.tadm_sw, True, padding=pad)
         self.sync_ana_activities ()
 
+        box_opts_sw = gtk.ScrolledWindow ()
+        box_conf.pack_start (box_opts_sw)
         box_opts = self.ana.box_opts = gtk.VBox (False, pad)
-        box_conf.pack_start (box_opts)
+        box_opts_sw.add_with_viewport (box_opts)
 
         box_range = gtk.HBox (False, pad)
         box_conf_plus_range.pack_start (box_range, expand=False, padding=0)
@@ -659,6 +661,10 @@ class MainWindow (object):
         box_bin = gtk.HBox (False, pad)
         box_opts.pack_start (box_bin, False)
 
+        self.ana.opts.radio_bins = radio_bins = gtk.RadioButton (
+                None, 'days per bin:')
+        box_bin.pack_start (self.ana.opts.radio_bins)
+        self.ana.opts.radio_bins.connect ('toggled', self.sync_ana_plot_update)
         self.ana.opts.spin_bin = spin = gtk.SpinButton ()
         box_bin.pack_start (spin, False)
         adj = gtk.Adjustment (
@@ -667,8 +673,15 @@ class MainWindow (object):
         spin.set_value (1)
         spin.connect (
                 'value-changed', self.sync_ana_plot_update)
-        box_bin.pack_start (make_label ('days per bin'))
 
+        self.ana.opts.radio_weekly = gtk.RadioButton (radio_bins, 'weekly')
+        box_opts.pack_start (self.ana.opts.radio_weekly, False)
+        self.ana.opts.radio_weekly.connect (
+                'toggled', self.sync_ana_plot_update)
+        self.ana.opts.radio_monthly = gtk.RadioButton (radio_bins, 'monthly')
+        box_opts.pack_start (self.ana.opts.radio_monthly, False)
+        self.ana.opts.radio_monthly.connect (
+                'toggled', self.sync_ana_plot_update)
 
         self.ana.opts.check_zero = gtk.CheckButton ('Extend y-axis to 0',)
         box_opts.pack_start (self.ana.opts.check_zero, False)
@@ -1010,8 +1023,35 @@ class MainWindow (object):
             else:
                 return '{0} (1 / {1:.0f} {2})'.format (name, scale, unit)
 
+        spec_ti, spec_tf = self.ana_get_range ()
+        if spec_ti >= spec_tf:
+            return
         sel_ti = None
         sel_tf = None
+
+        def get_x (ti, tf):
+            xf = datetime.datetime (tf.year, tf.month, tf.day)
+            one_day = datetime.timedelta (days=1)
+            if self.ana.opts.radio_bins.get_active ():
+                x = [datetime.datetime (ti.year, ti.month, ti.day)]
+                while x[-1] <= xf:
+                    x.append (x[-1] + bin_width * one_day)
+            elif self.ana.opts.radio_weekly.get_active ():
+                while ti.weekday () != 0:
+                    ti -= one_day
+                x = [datetime.datetime (ti.year, ti.month, ti.day)]
+                while x[-1] <= xf:
+                    x.append (x[-1] + 7 * one_day)
+            elif self.ana.opts.radio_monthly.get_active ():
+                while ti.day != 1:
+                    ti -= one_day
+                x = [datetime.datetime (ti.year, ti.month, ti.day)]
+                while x[-1] <= xf:
+                    next_x = x[-1] + one_day
+                    while next_x.day != 1:
+                        next_x += one_day
+                    x.append (next_x)
+            return x
 
         for i, activity in enumerate (cadm.activities):
             if cadm.checks[i]:
@@ -1020,26 +1060,28 @@ class MainWindow (object):
                     continue
                 ti = entries[0].date
                 tf = entries[-1].date
-                act_ti = datetime.datetime (ti.year, ti.month, ti.day)
+                act_ti = datetime.datetime (
+                        ti.year, ti.month, ti.day)
                 act_tf = datetime.datetime (
                         tf.year, tf.month, tf.day, 23, 59, 59)
+                if act_ti > spec_tf or act_tf < spec_ti:
+                    continue
                 if sel_ti == None or act_ti < sel_ti:
                     sel_ti = act_ti
                 if sel_tf == None or act_tf > sel_tf:
                     sel_tf = act_tf
-                x = [datetime.date (ti.year, ti.month, ti.day)]
-                xf = datetime.date (tf.year, tf.month, tf.day)
-                while x[-1] <= xf:
-                    x.append (x[-1] + datetime.timedelta (days=bin_width))
+                x = get_x (act_ti, act_tf)
                 y = []
                 err = []
+                entry_time = lambda entry: datetime.datetime (
+                        entry.date.year, entry.date.month, entry.date.day, 12)
                 for x1, x2 in izip (x[:-1], x[1:]):
                     y.append (np.sum ([
                         entry.n for entry in entries
-                        if x1 <= entry.date < x2]))
+                        if x1 <= entry_time (entry) < x2]))
                     err.append (np.sqrt (np.sum ([
                         entry.error**2 for entry in entries
-                        if x1 <= entry.date < x2])))
+                        if x1 <= entry_time (entry) < x2])))
                 x = np.array (x)
                 y = np.array (y)
                 err = np.array (err)
@@ -1071,14 +1113,13 @@ class MainWindow (object):
                 continue
             ti = entries[0].start_time
             tf = entries[-1].end_time
+            if ti > spec_tf or tf < spec_ti:
+                continue
             if sel_ti == None or ti < sel_ti:
                 sel_ti = ti
             if sel_tf == None or tf > sel_tf:
                 sel_tf = tf
-            x = [datetime.datetime (ti.year, ti.month, ti.day)]
-            xf = datetime.datetime (tf.year, tf.month, tf.day)
-            while x[-1] <= xf:
-                x.append (x[-1] + datetime.timedelta (days=bin_width))
+            x = get_x (ti, tf)
             y = []
             for x1, x2 in izip (x[:-1], x[1:]):
                 y.append (np.sum ([
@@ -1132,16 +1173,20 @@ class MainWindow (object):
         if not one_unit:
             ax.legend (loc='best')
 
-        spec_ti, spec_tf = self.ana_get_range ()
-        ax.set_xlim (max (spec_ti, sel_ti), min (spec_tf, sel_tf))
+        xmin = max (spec_ti, sel_ti)
+        xmin = datetime.datetime (xmin.year, xmin.month, xmin.day)
+        xmax = min (spec_tf, sel_tf)
+        xmax = datetime.datetime (xmax.year, xmax.month, xmax.day,
+                23, 59, 59)
+        ax.set_xlim (xmin, xmax)
 
         ax.set_xlabel ('date')
         if one_unit:
             ax.set_ylabel (unit)
 
         ax.grid (True)
-        self.ana.figure.tight_layout ()
-        ax.figure.autofmt_xdate (rotation=60)
+        #self.ana.figure.tight_layout ()
+        ax.figure.autofmt_xdate (rotation=45)
 
     def ana_plot_block (self):
         """Make a line plot."""
@@ -1154,6 +1199,9 @@ class MainWindow (object):
         ax = self.ana.figure.add_subplot (111)
         ax.patch.set_facecolor ('white')
 
+        spec_ti, spec_tf = self.ana_get_range ()
+        if spec_ti >= spec_tf:
+            return
         sel_ti = None
         sel_tf = None
 
@@ -1165,6 +1213,8 @@ class MainWindow (object):
                 continue
             ti = entries[0].start_time
             tf = entries[-1].end_time
+            if ti > spec_tf or tf < spec_ti:
+                continue
             if sel_ti == None or ti < sel_ti:
                 sel_ti = ti
             if sel_tf == None or tf > sel_tf:
@@ -1213,12 +1263,19 @@ class MainWindow (object):
                     edgecolor='none', facecolor=mpl_color, alpha=0.3)
             ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
             ax.yaxis.set_major_locator (mpl.ticker.MultipleLocator (4))
-        spec_ti, spec_tf = self.ana_get_range ()
-        ax.set_xlim (max (spec_ti, sel_ti), min (spec_tf, sel_tf))
+
+        xmin = max (spec_ti, sel_ti)
+        xmin = datetime.datetime (xmin.year, xmin.month, xmin.day)
+        xmax = min (spec_tf, sel_tf)
+        xmax = datetime.datetime (xmax.year, xmax.month, xmax.day,
+                23, 59, 59)
+        ax.set_xlim (xmin, xmax)
+
         ax.set_ylim (24 , 0)
+        ax.set_xlabel ('date')
         ax.set_ylabel ('hour')
-        self.ana.figure.tight_layout ()
-        ax.figure.autofmt_xdate (rotation=60)
+        #self.ana.figure.tight_layout ()
+        ax.figure.autofmt_xdate (rotation=45)
 
 
     # callbacks --------------------------------------------------------------
