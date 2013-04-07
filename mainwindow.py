@@ -585,15 +585,20 @@ class MainWindow (object):
         combo = self.ana.combo = gtk.combo_box_new_text ()
         box_combo.pack_start (combo, True, padding=pad)
         combo.append_text ('line plot')
+        combo.append_text ('block plot')
         combo.set_active (0)
         combo.connect ('changed', self.sync_ana_plot_update)
 
         paned = gtk.VPaned ()
         box_main.pack_start (paned)
 
+        box_conf_plus_range = gtk.VBox (False, pad)
+        paned.add1 (box_conf_plus_range)
+        box_conf_plus_range.set_border_width (pad)
+
         box_conf = gtk.HBox (True, pad)
-        box_conf.set_border_width (pad)
-        paned.add1 (box_conf)
+        box_conf_plus_range.pack_start (box_conf, True, padding=0)
+        #box_conf.set_border_width (pad)
 
         self.ana.cadm_sw = gtk.ScrolledWindow ()
         self.ana.cadm_sw.set_size_request (5, 150)
@@ -605,8 +610,41 @@ class MainWindow (object):
         box_opts = self.ana.box_opts = gtk.VBox (False, pad)
         box_conf.pack_start (box_opts)
 
+        box_range = gtk.HBox (False, pad)
+        box_conf_plus_range.pack_start (box_range, expand=False, padding=0)
+        box_range.set_border_width (0)
+
+        box_range.pack_start (make_label ('start date (Y/M/D):'), expand=False)
+        self.ana.spin_sY = gtk.SpinButton ()
+        box_range.pack_start (self.ana.spin_sY, expand=False)
+        self.ana.spin_sY.connect ('value-changed', self.sync_ana_plot_update)
+        box_range.pack_start (make_label ('/'), expand=False)
+        self.ana.spin_sM = gtk.SpinButton ()
+        box_range.pack_start (self.ana.spin_sM, expand=False)
+        self.ana.spin_sM.connect ('value-changed', self.sync_ana_plot_update)
+        box_range.pack_start (make_label ('/'), expand=False)
+        self.ana.spin_sD = gtk.SpinButton ()
+        box_range.pack_start (self.ana.spin_sD, expand=False)
+        self.ana.spin_sD.connect ('value-changed', self.sync_ana_plot_update)
+        box_range.pack_start (gtk.VSeparator (), expand=False)
+        box_range.pack_start (make_label ('end date (Y/M/D):'), expand=False)
+        self.ana.spin_eY = gtk.SpinButton ()
+        box_range.pack_start (self.ana.spin_eY, expand=False)
+        self.ana.spin_eY.connect ('value-changed', self.sync_ana_plot_update)
+        box_range.pack_start (make_label ('/'), expand=False)
+        self.ana.spin_eM = gtk.SpinButton ()
+        box_range.pack_start (self.ana.spin_eM, expand=False)
+        self.ana.spin_eM.connect ('value-changed', self.sync_ana_plot_update)
+        box_range.pack_start (make_label ('/'), expand=False)
+        self.ana.spin_eD = gtk.SpinButton ()
+        box_range.pack_start (self.ana.spin_eD, expand=False)
+        self.ana.spin_eD.connect ('value-changed', self.sync_ana_plot_update)
+        self.setup_ana_range ()
+
+
         self.ana.frame_plot = gtk.Frame ('Plot')
         paned.add2 (self.ana.frame_plot)
+        self.ana.frame_plot.set_border_width (0)
         self.sync_ana_plot_update ()
 
     def build_plot_options_line (self):
@@ -623,8 +661,10 @@ class MainWindow (object):
 
         self.ana.opts.spin_bin = spin = gtk.SpinButton ()
         box_bin.pack_start (spin, False)
-        spin.set_adjustment (gtk.Adjustment (
-            value=1, lower=1, upper=sys.maxint, step_incr=1))
+        adj = gtk.Adjustment (
+                value=1, lower=1, upper=sys.maxint, step_incr=1)
+        spin.set_adjustment (adj)
+        spin.set_value (1)
         spin.connect (
                 'value-changed', self.sync_ana_plot_update)
         box_bin.pack_start (make_label ('days per bin'))
@@ -632,16 +672,26 @@ class MainWindow (object):
 
         self.ana.opts.check_zero = gtk.CheckButton ('Extend y-axis to 0',)
         box_opts.pack_start (self.ana.opts.check_zero, False)
-        self.ana.opts.check_zero.set_active (True)
+        self.ana.opts.check_zero.set_active (False)
         self.ana.opts.check_zero.connect ('toggled', self.sync_ana_plot_update)
 
         self.ana.opts.check_errors = gtk.CheckButton ('Include errorbars',)
         box_opts.pack_start (self.ana.opts.check_errors, False)
-        self.ana.opts.check_errors.set_active (True)
+        self.ana.opts.check_errors.set_active (False)
         self.ana.opts.check_errors.connect ('toggled', self.sync_ana_plot_update)
 
         self.window.show_all ()
 
+    def build_plot_options_block (self):
+        """Build the Analysis pane plot options frame."""
+        LOG_F ()
+        pad = self.pad
+        self.ana.opts = Vars ()
+        self.ana.plot_type = 1
+        box_opts = self.ana.box_opts
+        box_opts.foreach (box_opts.remove)
+
+        self.window.show_all ()
 
     def sync_counting_activities (self):
         """Sync counting activities view."""
@@ -795,6 +845,11 @@ class MainWindow (object):
                 self.build_plot_options_line ()
                 self.ana.plot_type = 0
             self.ana_plot_line ()
+        if self.ana.combo.get_active () == 1:
+            if self.ana.plot_type != 1:
+                self.build_plot_options_block ()
+                self.ana.plot_type = 1
+            self.ana_plot_block ()
         self.window.show_all ()
 
     def set_title (self, title=None):
@@ -855,6 +910,53 @@ class MainWindow (object):
         setup (self.timing.spin_eh, today.hour, 0, 23)
         setup (self.timing.spin_em, today.minute, 0, 59)
 
+    def ana_get_range_limits (self):
+        cadm = self.ana.cadm
+        tadm = self.ana.tadm
+        ti = None
+        tf = None
+        for activity in cadm.activities:
+            entries = sorted (self.log.entries[activity])
+            ti_act = entries[0].date
+            tf_act = entries[-1].date
+            ti_act = datetime.datetime (
+                    ti_act.year, ti_act.month, ti_act.day)
+            tf_act = datetime.datetime (
+                    tf_act.year, tf_act.month, tf_act.day, 23, 59, 59)
+            if ti == None or ti_act < ti:
+                ti = ti_act
+            if tf == None or tf_act > tf:
+                tf = tf_act
+
+        for activity in tadm.activities:
+            entries = sorted (self.log.entries[activity])
+            ti_activity = entries[0].start_time
+            tf_activity = entries[-1].start_time
+            if ti == None or ti_activity < ti:
+                ti = ti_activity
+            if tf == None or tf_activity > tf:
+                tf = tf_activity
+
+        return (ti, tf)
+
+    def setup_ana_range (self):
+        LOG_F ()
+
+        def setup (spin, value, lower, upper):
+            adj = gtk.Adjustment (
+                    value=value, lower=lower, upper=upper, step_incr=1)
+            spin.set_adjustment (adj)
+            spin.set_value (value)
+
+        ti, tf = self.ana_get_range_limits ()
+
+        setup (self.ana.spin_sY, ti.year, 1900, 2200)
+        setup (self.ana.spin_sM, ti.month, 1, 12)
+        setup (self.ana.spin_sD, ti.day, 1, 31)
+        setup (self.ana.spin_eY, tf.year, 1900, 2200)
+        setup (self.ana.spin_eM, tf.month, 1, 12)
+        setup (self.ana.spin_eD, tf.day, 1, 31)
+
 
     # plotting ---------------------------------------------------------------
 
@@ -862,11 +964,25 @@ class MainWindow (object):
         """Create the figure."""
         LOG_F ()
         self.ana.frame_plot.foreach (self.ana.frame_plot.remove)
+        box_pad = gtk.HBox (False, 0)
+        box_pad.set_border_width (self.pad)
+        self.ana.frame_plot.add (box_pad)
         self.ana.frame_plot.set_label ('Plot')
         fig = self.ana.figure = mpl.figure.Figure (
                 figsize=(6, 4), dpi=50)
         self.ana.canvas = mplgtkagg.FigureCanvasGTKAgg (self.ana.figure)
-        self.ana.frame_plot.add (self.ana.canvas)
+        box_pad.pack_start (self.ana.canvas)
+
+    def ana_get_range (self):
+        sY = self.ana.spin_sY.get_value_as_int ()
+        sM = self.ana.spin_sM.get_value_as_int ()
+        sD = self.ana.spin_sD.get_value_as_int ()
+
+        eY = self.ana.spin_eY.get_value_as_int ()
+        eM = self.ana.spin_eM.get_value_as_int ()
+        eD = self.ana.spin_eD.get_value_as_int ()
+
+        return datetime.datetime (sY,sM,sD), datetime.datetime (eY,eM,eD)
 
     def ana_plot_line (self):
         """Make a line plot."""
@@ -894,6 +1010,8 @@ class MainWindow (object):
             else:
                 return '{0} (1 / {1:.0f} {2})'.format (name, scale, unit)
 
+        sel_ti = None
+        sel_tf = None
 
         for i, activity in enumerate (cadm.activities):
             if cadm.checks[i]:
@@ -902,6 +1020,13 @@ class MainWindow (object):
                     continue
                 ti = entries[0].date
                 tf = entries[-1].date
+                act_ti = datetime.datetime (ti.year, ti.month, ti.day)
+                act_tf = datetime.datetime (
+                        tf.year, tf.month, tf.day, 23, 59, 59)
+                if sel_ti == None or act_ti < sel_ti:
+                    sel_ti = act_ti
+                if sel_tf == None or act_tf > sel_tf:
+                    sel_tf = act_tf
                 x = [datetime.date (ti.year, ti.month, ti.day)]
                 xf = datetime.date (tf.year, tf.month, tf.day)
                 while x[-1] <= xf:
@@ -939,39 +1064,44 @@ class MainWindow (object):
                 alphas.append (cadm.alphas[i] / colormax)
 
         for i, activity in enumerate (tadm.activities):
-            if tadm.checks[i]:
-                entries = sorted (self.log.entries[activity])
-                if not len (entries):
-                    continue
-                ti = entries[0].start_time
-                tf = entries[-1].end_time
-                x = [datetime.datetime (ti.year, ti.month, ti.day)]
-                xf = datetime.datetime (tf.year, tf.month, tf.day)
-                while x[-1] <= xf:
-                    x.append (x[-1] + datetime.timedelta (days=bin_width))
-                y = []
-                for x1, x2 in izip (x[:-1], x[1:]):
-                    y.append (np.sum ([
-                        entry.overlap_in_hours (x1, x2)
-                        for entry in entries]))
-                x = np.array (x)
-                y = np.array (y)
-                xs.append (x)
-                scale = get_scale (y)
-                labels.append (get_label (activity.name, 'hours', scale))
-                if one_unit:
-                    unit = 'hours'
-                    ys.append (y)
-                else:
-                    ys.append (y / scale)
-                errs.append (None)
-                color = tadm.colors[i]
-                colormax = 65535
-                colors.append ((
-                    color.red / colormax,
-                    color.green / colormax,
-                    color.blue / colormax))
-                alphas.append (tadm.alphas[i] / colormax)
+            if not tadm.checks[i]:
+                continue
+            entries = sorted (self.log.entries[activity])
+            if not len (entries):
+                continue
+            ti = entries[0].start_time
+            tf = entries[-1].end_time
+            if sel_ti == None or ti < sel_ti:
+                sel_ti = ti
+            if sel_tf == None or tf > sel_tf:
+                sel_tf = tf
+            x = [datetime.datetime (ti.year, ti.month, ti.day)]
+            xf = datetime.datetime (tf.year, tf.month, tf.day)
+            while x[-1] <= xf:
+                x.append (x[-1] + datetime.timedelta (days=bin_width))
+            y = []
+            for x1, x2 in izip (x[:-1], x[1:]):
+                y.append (np.sum ([
+                    entry.overlap_in_hours (x1, x2)
+                    for entry in entries]))
+            x = np.array (x)
+            y = np.array (y)
+            xs.append (x)
+            scale = get_scale (y)
+            labels.append (get_label (activity.name, 'hours', scale))
+            if one_unit:
+                unit = 'hours'
+                ys.append (y)
+            else:
+                ys.append (y / scale)
+            errs.append (None)
+            color = tadm.colors[i]
+            colormax = 65535
+            colors.append ((
+                color.red / colormax,
+                color.green / colormax,
+                color.blue / colormax))
+            alphas.append (tadm.alphas[i] / colormax)
 
         if not labels:
             return
@@ -1001,11 +1131,94 @@ class MainWindow (object):
         ax.set_ylim (ymin=max (ax.get_ylim ()[0], 0), ymax=1.1 * ymax)
         if not one_unit:
             ax.legend (loc='best')
+
+        spec_ti, spec_tf = self.ana_get_range ()
+        ax.set_xlim (max (spec_ti, sel_ti), min (spec_tf, sel_tf))
+
         ax.set_xlabel ('date')
         if one_unit:
             ax.set_ylabel (unit)
 
         ax.grid (True)
+        self.ana.figure.tight_layout ()
+        ax.figure.autofmt_xdate (rotation=60)
+
+    def ana_plot_block (self):
+        """Make a line plot."""
+        LOG_F ()
+
+        tadm = self.ana.tadm
+        if np.sum (tadm.checks) == 0:
+            return
+
+        ax = self.ana.figure.add_subplot (111)
+        ax.patch.set_facecolor ('white')
+
+        sel_ti = None
+        sel_tf = None
+
+        for i, activity in enumerate (tadm.activities):
+            if not tadm.checks[i]:
+                continue
+            entries = sorted (self.log.entries[activity])
+            if not len (entries):
+                continue
+            ti = entries[0].start_time
+            tf = entries[-1].end_time
+            if sel_ti == None or ti < sel_ti:
+                sel_ti = ti
+            if sel_tf == None or tf > sel_tf:
+                sel_tf = tf
+
+            block_xs = []
+            block_ys = []
+            for entry in entries:
+                t1 = entry.start_time
+                t2 = entry.end_time
+                if t2.day != t1.day:
+                    first_t1 = t1
+                    first_t2 = datetime.datetime (
+                            t1.year, t1.month, t1.day, 23, 59, 59)
+                    second_t1 = datetime.datetime (
+                            t2.year, t2.month, t2.day, 0, 0, 0)
+                    second_t2 = t2
+                    ts = [(first_t1, first_t2), (second_t1, second_t2)]
+                else:
+                    ts = [(t1, t2)]
+                for ta, tb in ts:
+                    prev_day = datetime.datetime (
+                            ta.year, ta.month, ta.day, 0, 0)
+                    next_day = prev_day + datetime.timedelta (days=1.)
+                    hours1 = ta.hour + ta.minute / 60.
+                    hours2 = tb.hour + tb.minute / 60.
+                    block_x = [prev_day, prev_day, next_day, next_day]
+                    block_y = [hours1, hours2, hours2, hours1]
+                    block_xs.append (block_x)
+                    block_ys.append (block_y)
+
+            # now use None to separate polygons
+            call_list = []
+            for xtips, ytips in izip (block_xs, block_ys):
+                call_list.append (xtips)
+                call_list.append (ytips)
+
+            color = tadm.colors[i]
+            colormax = 65535
+            mpl_color = (
+                color.red / colormax,
+                color.green / colormax,
+                color.blue / colormax)
+
+            ax.fill (*call_list,
+                    edgecolor='none', facecolor=mpl_color, alpha=0.3)
+            ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
+            ax.yaxis.set_major_locator (mpl.ticker.MultipleLocator (4))
+        spec_ti, spec_tf = self.ana_get_range ()
+        ax.set_xlim (max (spec_ti, sel_ti), min (spec_tf, sel_tf))
+        ax.set_ylim (24 , 0)
+        ax.set_ylabel ('hour')
+        self.ana.figure.tight_layout ()
+        ax.figure.autofmt_xdate (rotation=60)
 
 
     # callbacks --------------------------------------------------------------
@@ -1474,10 +1687,11 @@ class MainWindow (object):
         entry = self.log.create_entry (
                 activity.name, start_time, end_time, note=note)
         self.sync_timing_entries ()
-        self.setup_timing_entries_add_start ()
-        self.setup_timing_entries_add_end ()
+        # self.setup_timing_entries_add_start ()
+        # self.setup_timing_entries_add_end ()
         self.modify ('timing', 'Added entry starting at {0}'.format (
             entry.start_time))
+        self.timing.spin_sY.grab_focus ()
 
     def cb_timing_add_change_start_month (self, whence, *args):
         """Limit the day according to the year and month."""
