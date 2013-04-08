@@ -389,7 +389,8 @@ class Plotter (object):
     def __init__ (self, axes,
             twin_axes=None,
             log=False,
-            twin_log=None):
+            twin_log=None,
+            expx=False):
         """Initialize a Plotter.
 
         :type   axes: matplotlib Axes
@@ -406,6 +407,9 @@ class Plotter (object):
         :param  twin_log: Whether to use a log y scale on the twin x axes.
             (If not given, then same as log argument)
 
+        :type   expx: bool
+        :param  expx: If true, convert :math:`x` -> :math:`10^x`
+
         """
         self._axes = axes
         self._twin_axes = twin_axes
@@ -417,6 +421,7 @@ class Plotter (object):
         self._lines = np.empty (0, dtype=Line)
         self._line_styles = np.empty (0, dtype=dict)
         self._line_axes = np.empty (0, dtype=str)
+        self._expx = bool (expx)
 
     @property
     def axes (self):
@@ -432,6 +437,11 @@ class Plotter (object):
     def twin_log (self):
         """Whether to use a log y scale on the twin axes."""
         return self._twin_log
+
+    @property
+    def expx (self):
+        """If true, convert :math:`x` -> :math:`10^x`"""
+        return self._expx
 
     @property
     def twin_axes (self):
@@ -491,6 +501,90 @@ class Plotter (object):
 
 
     def finish (self, legend=None):
+        """Draw the lines.
+
+        :type   legend: bool or dict
+        :param  legend: If True or non-empty dict, draw a legend. If dict, use
+            as keyword arguments for matplotlib.axes.Axes.legend.
+
+        After this call, self.mpl_lines will be the matplotlib Line2D objects
+        and self.mpl_labels will be the corresponding labels.
+        
+        """
+        self.mpl_lines = np.empty (0, dtype=object)
+        self.labels = np.empty (0, dtype=str)
+        for line, style, axes_name \
+                in izip (self.lines, self.line_styles, self.line_axes):
+            if axes_name == 'main':
+                axes = self.axes
+                log = self.log
+            else:
+                if self.twin_axes is None:
+                    self._twin_axes = self.axes.twinx ()
+                axes = self.twin_axes
+                log = self.twin_log
+            axes = self.axes if axes_name == 'main' else self.twin_axes
+            prev_ymin, prev_ymax = axes.get_ylim ()
+            x = line.bin_centers
+            if self.expx:
+                x = 10**x
+            y = line.values
+            yerr = line.errors
+            kwargs = copy.deepcopy (style.kwargs)
+            label = kwargs.get ('label', '')
+            if style.line:
+                kwargs['drawstyle'] = 'steps-mid'
+            else:
+                kwargs['linestyle'] = 'None'
+            if not style.errorbars:
+                yerr = np.zeros_like (line.errors)
+                kwargs['capsize'] = 0
+            mpl_line, mpl_errorcaps, mpl_errorbars = axes.errorbar (
+                    x, y, yerr, **kwargs)
+            if style.line:
+                # get left of first bin, right of last bin
+                bins = line.bins
+                if self.expx:
+                    bins = 10**bins
+                x1 = list (reversed ([bins[0], x[0]]))
+                x2 = [bins[-1], x[-1]]
+                y1 = [y[0], y[0]]
+                y2 = [y[-1], y[-1]]
+                zorder = kwargs.pop ('zorder', 0)
+                zorder -= .01
+                color = mpl_line.get_color ()
+                drawstyle= 'steps-post'
+                line_kwargs = dict (
+                        drawstyle=drawstyle, color=color, zorder=zorder)
+                def keep (key):
+                    if key in kwargs:
+                        line_kwargs[key] = kwargs[key]
+                keep ('lw'), keep ('linewidth'), keep ('alpha')
+                keep ('ls'), keep ('linestyle')
+                axes.plot (x1, y1, **line_kwargs)
+                axes.plot (x2, y2, **line_kwargs)
+            if log:
+                axes.set_yscale ('log')
+                if np.sum (y>0) > 0:
+                    # don't let errorbars make the scale crazy
+                    min_accepted_ymin = min (prev_ymin, .1 * np.min (y[y>0]))
+                    new_ymin, new_ymax = axes.get_ylim ()
+                    final_ymin = max (new_ymin, min_accepted_ymin)
+                    axes.set_ylim (ymin=final_ymin)
+
+            self.mpl_lines = np.append (self.mpl_lines, mpl_line)
+            self.labels = np.append (self.labels, label)
+
+        if self.expx:
+            self.axes.set_xscale ('log')
+
+        if legend:
+            if legend is True:
+                legend = {}
+            axes = self.twin_axes or self.axes
+            self.legend = axes.legend (self.mpl_lines, self.labels, **legend)
+
+    def old__finish (self, legend=None):
         """Draw the lines.
 
         :type   legend: bool or dict
