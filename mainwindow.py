@@ -642,8 +642,14 @@ class MainWindow (object):
         self.ana.spin_eD = gtk.SpinButton ()
         box_range.pack_start (self.ana.spin_eD, expand=False)
         self.ana.spin_eD.connect ('value-changed', self.sync_ana_plot_update)
+
         self.setup_ana_range ()
 
+        box_range.pack_start (gtk.VSeparator (), expand=False)
+
+        button_save = gtk.Button (label='_Save Plot')
+        box_range.pack_start (button_save, expand=False, padding=pad)
+        button_save.connect ('clicked', self.cb_ana_save_plot)
 
         self.ana.frame_plot = gtk.Frame ('Plot')
         paned.add2 (self.ana.frame_plot)
@@ -1175,30 +1181,24 @@ class MainWindow (object):
             kwargs = dict (label=label, color=color, lw=1.4)
             if err is None or not errorbars:
                 plotter.add (histlite.Line (x, y), **kwargs)
-                # ax.plot (x, y, **kwargs)
                 ymax = max (ymax, np.max (y))
             else:
                 plotter.add (histlite.Line (x, y, err),
                         errorbars=True, **kwargs)
                 ymax = max (ymax, np.max (y + err))
-                # p, c, b = ax.errorbar (x, y - err, y + err, **kwargs)
-                # for thing in np.r_[c, b]:
-                #     thing.set_alpha (alpha)
         plotter.finish ()
         if self.ana.opts.check_zero.get_active ():
             ax.set_ylim (ymin=0)
         ax.set_ylim (ymin=max (ax.get_ylim ()[0], 0), ymax=1.1 * ymax)
-        if not one_unit:
-            ax.legend (loc='best')
-
-        ax.xaxis.set_major_locator (mpl.ticker.MaxNLocator (20))
-        ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
         xmin = max (spec_ti, sel_ti)
         xmin = datetime.datetime (xmin.year, xmin.month, xmin.day)
         xmax = min (spec_tf, sel_tf)
         xmax = datetime.datetime (xmax.year, xmax.month, xmax.day,
                 23, 59, 59)
         ax.set_xlim (xmin, xmax)
+        n_days = timedelta_to_seconds (xmax - xmin) / 86400
+        ax.xaxis.set_major_locator (mpl.ticker.MaxNLocator (min (n_days, 20)))
+        ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
 
         if one_unit:
             ax.set_ylabel ('amount per day ({0})'.format (unit))
@@ -1207,7 +1207,16 @@ class MainWindow (object):
 
         ax.grid (True)
         ax.figure.autofmt_xdate (rotation=45)
-        ax.figure.subplots_adjust (left=.05, right=.95)
+
+        legend = ax.legend (loc='lower left',
+                bbox_to_anchor=(0,1),
+                borderaxespad=0,
+                prop=mpl.font_manager.FontProperties (size='small'),
+                ncol=int (np.ceil (len (labels) / 2)))
+
+        ax.figure.subplots_adjust (left=.05, right=.97, top=.87)
+        ax.figure.suptitle ('Amounts Summary',
+                horizontalalignment='right', x=.97, y=.93, weight='bold')
 
     def ana_plot_block (self):
         """Make a line plot."""
@@ -1228,6 +1237,9 @@ class MainWindow (object):
         sel_tf = None
 
         counting_activities = []
+        n_counting_activities = np.sum (cadm.checks)
+
+        one_day = datetime.timedelta (days=1)
 
         for i, activity in enumerate (cadm.activities):
             if not cadm.checks[i]:
@@ -1235,6 +1247,7 @@ class MainWindow (object):
             entries = sorted (self.log.entries[activity])
             if not len (entries):
                 continue
+            activity_max = np.max ([entry.n for entry in entries])
             counting_activities.append (activity.name)
             n_activity = len (counting_activities) - 1
             di = entries[0].date
@@ -1250,39 +1263,50 @@ class MainWindow (object):
 
             block_xs = []
             block_ys = []
+            alphas = []
 
             last_date = di - datetime.timedelta (days=1)
             for entry in entries:
                 date = entry.date
-                if date == last_date:
-                    continue
+                #if date == last_date:
+                #    continue
                 last_date = date
                 prev_day = datetime.datetime (
                         date.year, date.month, date.day, 0, 0)
-                next_day = prev_day + datetime.timedelta (days=1.)
-                hours1 = - 2 * n_activity - 3
-                hours2 = - 2 * n_activity - 1
+                next_day = prev_day + one_day
+                hours1 = - 2 * (n_counting_activities - n_activity - 1) - 3
+                hours2 = - 2 * (n_counting_activities - n_activity - 1) - 1
                 block_x = [prev_day, prev_day, next_day, next_day]
                 block_y = [hours1, hours2, hours2, hours1]
                 block_xs.append (block_x)
                 block_ys.append (block_y)
+                alphas.append (entry.n / activity_max)
 
-            # now use None to separate polygons
-            call_list = []
-            for xtips, ytips in izip (block_xs, block_ys):
-                call_list.append (xtips)
-                call_list.append (ytips)
+            block_xs = np.array (block_xs)
+            block_ys = np.array (block_ys)
+            alphas = np.array (alphas)
 
-            color = cadm.colors[i]
-            colormax = 65535
-            mpl_color = (
-                color.red / colormax,
-                color.green / colormax,
-                color.blue / colormax)
+            alpha_range = np.linspace (0, 1, 100)
+            for a1, a2 in izip (alpha_range[:-1], alpha_range[1:]):
 
-            ax.fill (*call_list,
-                    edgecolor='none', facecolor=mpl_color, alpha=0.3)
+                call_list = []
+                idx = (a1 <= alphas) * (alphas < a2)
+                for xtips, ytips in izip (block_xs[idx], block_ys[idx]):
+                    call_list.append (xtips)
+                    call_list.append (ytips)
 
+                color = cadm.colors[i]
+                colormax = 65535
+                mpl_color = (
+                    color.red / colormax,
+                    color.green / colormax,
+                    color.blue / colormax)
+
+                ax.fill (*call_list,
+                        edgecolor='none', facecolor=mpl_color,
+                        alpha=a2)
+
+        n_timing_activities = 0
         for i, activity in enumerate (tadm.activities):
             if not tadm.checks[i]:
                 continue
@@ -1324,7 +1348,6 @@ class MainWindow (object):
                     block_xs.append (block_x)
                     block_ys.append (block_y)
 
-            # now use None to separate polygons
             call_list = []
             for xtips, ytips in izip (block_xs, block_ys):
                 call_list.append (xtips)
@@ -1337,8 +1360,13 @@ class MainWindow (object):
                 color.green / colormax,
                 color.blue / colormax)
 
-            ax.fill (*call_list,
-                    edgecolor='none', facecolor=mpl_color, alpha=0.3)
+            n_timing_activities += 1
+            ax.fill (*call_list[:2],
+                    edgecolor='none', facecolor=mpl_color, alpha=0.3,
+                    label=activity.name)
+            if len (call_list) > 2:
+                ax.fill (*call_list[2:],
+                        edgecolor='none', facecolor=mpl_color, alpha=0.3)
 
         hour_tick_locs = np.arange (0, 24, 4)
         counting_tick_locs = np.arange (
@@ -1350,12 +1378,9 @@ class MainWindow (object):
             if val >= 0:
                 return '{0}:00'.format (val)
             else:
-                return counting_activities[-val//2 - 1]
+                return counting_activities[i]
 
         ax.yaxis.set_major_formatter (mpl.ticker.FuncFormatter (ff))
-
-        ax.xaxis.set_major_locator (mpl.ticker.MaxNLocator (20))
-        ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
 
         xmin = max (spec_ti, sel_ti)
         xmin = datetime.datetime (xmin.year, xmin.month, xmin.day)
@@ -1363,12 +1388,22 @@ class MainWindow (object):
         xmax = datetime.datetime (xmax.year, xmax.month, xmax.day,
                 23, 59, 59)
         ax.set_xlim (xmin, xmax)
+        n_days = timedelta_to_seconds (xmax - xmin) / 86400
+        ax.xaxis.set_major_locator (mpl.ticker.MaxNLocator (min (n_days, 20)))
+        ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
 
-        ax.set_ylim (24, -2 * len (counting_activities) - 1)
+        ax.set_ylim (24, -2 * len (counting_activities) - 2)
         ax.set_ylabel ('hour')
-        #self.ana.figure.tight_layout ()
+
+        if n_timing_activities:
+            ax.legend (ncol=n_timing_activities,
+                    loc='lower left', bbox_to_anchor=(0,1), borderaxespad=0)
+        ax.axhline (-0.5, color='.8', ls='--')
+
         ax.figure.autofmt_xdate (rotation=45)
-        ax.figure.subplots_adjust (left=.05, right=.95)
+        ax.figure.subplots_adjust (left=.05, right=.97)
+        ax.figure.suptitle ('Timing Summary',
+                horizontalalignment='right', x=.97, y=.96, weight='bold')
 
 
     # callbacks --------------------------------------------------------------
@@ -1938,6 +1973,30 @@ class MainWindow (object):
         self.set_status (
                 'ana', 'Updated color for "{0}".'.format (activity.name))
         self.sync_ana_plot_update ()
+
+    def cb_ana_save_plot (self, whence, *args):
+        """Save the plot."""
+        dialog = gtk.FileChooserDialog ('Save Plot...',
+                None, gtk.FILE_CHOOSER_ACTION_SAVE,
+                (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
+                    gtk.STOCK_SAVE, gtk.RESPONSE_OK)
+                )
+        dialog.set_default_response (gtk.RESPONSE_OK)
+
+        add_filt (dialog, 'PNG files', '*.png')
+        add_filt (dialog, 'PDF files', '*.pdf')
+        add_filt (dialog, 'All files', '*')
+
+        response = dialog.run ()
+        if response == gtk.RESPONSE_OK:
+            filename = dialog.get_filename ()
+        else:
+            filename = None
+        if filename:
+            self.ana.figure.savefig (filename)
+            self.set_status ('load', 'Saved {0}.'.format (filename))
+        dialog.destroy ()
+        return response
 
     # other ------------------------------------------------------------------
 
