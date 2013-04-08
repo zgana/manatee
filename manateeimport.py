@@ -15,9 +15,10 @@ class TimeRecordingImporter (object):
 
     """Import from TimeRecording (Andriod App)."""
 
-    def __init__ (self, filename, log):
+    def __init__ (self, filename, log, default=None):
         self.filename = filename
         self.log = log
+        self.default = default
         with open (self.filename, 'rt') as f:
             self.lines = f.readlines ()
 
@@ -37,22 +38,33 @@ class TimeRecordingImporter (object):
 
         for line in self.lines:
             regex = '(\d\d)/(\d\d)/(\d\d\d\d),\w\w\w,'\
-                    '(\d\d):(\d\d),(\d\d):(\d\d),\d\d:\d\d,' \
-                    '([^,]*),.*'
+                    '(\d\d):(\d\d)( am| pm)?,(\d\d):(\d\d)( am| pm)?,' \
+                    '\d\d:\d\d,([^,]*),(([^,]*),)?.*'
             m = re.match (regex, line)
             if not m:
                 continue
-            task = m.group (8)
+            task = m.group (10)
+            if re.match ('\d\d\.\d\d', task):
+                task = m.group (12)
             task_match = re.match (activity_name, task)
             if not task_match:
-                continue
+                if not (activity_name == self.default and task == ''):
+                    continue
             month = int (m.group (1))
             day = int (m.group (2))
             year = int (m.group (3))
             start_hour = int (m.group (4))
             start_minute = int (m.group (5))
-            end_hour = int (m.group (6))
-            end_minute = int (m.group (7))
+            start_ampm = m.group (6)
+            if start_ampm == ' pm':
+                start_hour += 12
+                start_hour %= 24;
+            end_hour = int (m.group (7))
+            end_minute = int (m.group (8))
+            end_ampm = m.group (9)
+            if end_ampm == ' pm':
+                end_hour += 12
+                end_hour %= 24;
             start_time = datetime.datetime (
                     year, month, day, start_hour, start_minute)
             end_time = datetime.datetime (

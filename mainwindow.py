@@ -22,6 +22,7 @@ import numpy as np
 
 import manateelog
 from manateelog import Log, CountingActivity, TimingActivity
+from manateelog import timedelta_to_seconds
 import manateeimport
 
 from treemodels import CountingActivitiesModel, TimingActivitiesModel
@@ -776,6 +777,9 @@ class MainWindow (object):
         add_col ('n', 1)
         add_col ('+/-', 2)
         add_col ('note', 3)
+        adj = self.counting.cem_sw.get_vadjustment ()
+        adj.set_value (1)
+        self.counting.cem_sw.set_vadjustment (adj)
         self.sync_ana_plot_update ()
         self.window.show_all ()
 
@@ -808,6 +812,9 @@ class MainWindow (object):
         add_col ('start time', 0)
         add_col ('end time', 1)
         add_col ('note', 2)
+        adj = self.timing.tem_sw.get_vadjustment ()
+        adj.set_value (1)
+        self.timing.tem_sw.set_vadjustment (adj)
         self.sync_ana_plot_update ()
         self.window.show_all ()
 
@@ -930,6 +937,8 @@ class MainWindow (object):
         tf = None
         for activity in cadm.activities:
             entries = sorted (self.log.entries[activity])
+            if not len (entries):
+                continue
             ti_act = entries[0].date
             tf_act = entries[-1].date
             ti_act = datetime.datetime (
@@ -943,6 +952,8 @@ class MainWindow (object):
 
         for activity in tadm.activities:
             entries = sorted (self.log.entries[activity])
+            if not len (entries):
+                continue
             ti_activity = entries[0].start_time
             tf_activity = entries[-1].start_time
             if ti == None or ti_activity < ti:
@@ -962,6 +973,10 @@ class MainWindow (object):
             spin.set_value (value)
 
         ti, tf = self.ana_get_range_limits ()
+        if ti is None:
+            ti = datetime.date (1990, 1, 1)
+        if tf is None:
+            tf = datetime.date (2200, 12, 31)
 
         setup (self.ana.spin_sY, ti.year, 1900, 2200)
         setup (self.ana.spin_sM, ti.month, 1, 12)
@@ -1054,56 +1069,58 @@ class MainWindow (object):
             return x
 
         for i, activity in enumerate (cadm.activities):
-            if cadm.checks[i]:
-                entries = self.log.entries[activity]
-                if not len (entries):
-                    continue
-                ti = entries[0].date
-                tf = entries[-1].date
-                act_ti = datetime.datetime (
-                        ti.year, ti.month, ti.day)
-                act_tf = datetime.datetime (
-                        tf.year, tf.month, tf.day, 23, 59, 59)
-                if act_ti > spec_tf or act_tf < spec_ti:
-                    continue
-                if sel_ti == None or act_ti < sel_ti:
-                    sel_ti = act_ti
-                if sel_tf == None or act_tf > sel_tf:
-                    sel_tf = act_tf
-                x = get_x (act_ti, act_tf)
-                y = []
-                err = []
-                entry_time = lambda entry: datetime.datetime (
-                        entry.date.year, entry.date.month, entry.date.day, 12)
-                for x1, x2 in izip (x[:-1], x[1:]):
-                    y.append (np.sum ([
-                        entry.n for entry in entries
-                        if x1 <= entry_time (entry) < x2]))
-                    err.append (np.sqrt (np.sum ([
-                        entry.error**2 for entry in entries
-                        if x1 <= entry_time (entry) < x2])))
-                x = np.array (x)
-                y = np.array (y)
-                err = np.array (err)
-                xs.append (x)
-                # TODO: decide how exactly to choose a scale
-                scale = get_scale (y, err)
-                labels.append (get_label (
-                    activity.name, activity.unit, scale))
-                if one_unit:
-                    unit = activity.unit
-                    ys.append (y)
-                    errs.append (err)
-                else:
-                    ys.append (y / scale)
-                    errs.append (err / scale)
-                color = cadm.colors[i]
-                colormax = 65535
-                colors.append ((
-                    color.red / colormax,
-                    color.green / colormax,
-                    color.blue / colormax))
-                alphas.append (cadm.alphas[i] / colormax)
+            if not cadm.checks[i]:
+                continue
+            entries = self.log.entries[activity]
+            if not len (entries):
+                continue
+            ti = entries[0].date
+            tf = entries[-1].date
+            act_ti = datetime.datetime (
+                    ti.year, ti.month, ti.day)
+            act_tf = datetime.datetime (
+                    tf.year, tf.month, tf.day, 23, 59, 59)
+            if act_ti > spec_tf or act_tf < spec_ti:
+                continue
+            if sel_ti == None or act_ti < sel_ti:
+                sel_ti = act_ti
+            if sel_tf == None or act_tf > sel_tf:
+                sel_tf = act_tf
+            x = get_x (act_ti, act_tf)
+            y = []
+            err = []
+            entry_time = lambda entry: datetime.datetime (
+                    entry.date.year, entry.date.month, entry.date.day, 12)
+            for x1, x2 in izip (x[:-1], x[1:]):
+                n_days = int (timedelta_to_seconds (x2 - x1) / 86400)
+                y.append (np.sum ([
+                    entry.n / n_days for entry in entries
+                    if x1 <= entry_time (entry) < x2]))
+                err.append (np.sqrt (np.sum ([
+                    entry.error**2 / n_days for entry in entries
+                    if x1 <= entry_time (entry) < x2])))
+            x = np.array (x)
+            y = np.array (y)
+            err = np.array (err)
+            xs.append (x)
+            # TODO: decide how exactly to choose a scale
+            scale = get_scale (y, err)
+            labels.append (get_label (
+                activity.name, activity.unit, scale))
+            if one_unit:
+                unit = activity.unit
+                ys.append (y)
+                errs.append (err)
+            else:
+                ys.append (y / scale)
+                errs.append (err / scale)
+            color = cadm.colors[i]
+            colormax = 65535
+            colors.append ((
+                color.red / colormax,
+                color.green / colormax,
+                color.blue / colormax))
+            alphas.append (cadm.alphas[i] / colormax)
 
         for i, activity in enumerate (tadm.activities):
             if not tadm.checks[i]:
@@ -1122,8 +1139,9 @@ class MainWindow (object):
             x = get_x (ti, tf)
             y = []
             for x1, x2 in izip (x[:-1], x[1:]):
+                n_days = int (timedelta_to_seconds (x2 - x1) / 86400)
                 y.append (np.sum ([
-                    entry.overlap_in_hours (x1, x2)
+                    entry.overlap_in_hours (x1, x2) / n_days
                     for entry in entries]))
             x = np.array (x)
             y = np.array (y)
@@ -1173,6 +1191,8 @@ class MainWindow (object):
         if not one_unit:
             ax.legend (loc='best')
 
+        ax.xaxis.set_major_locator (mpl.ticker.MaxNLocator (20))
+        ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
         xmin = max (spec_ti, sel_ti)
         xmin = datetime.datetime (xmin.year, xmin.month, xmin.day)
         xmax = min (spec_tf, sel_tf)
@@ -1180,20 +1200,22 @@ class MainWindow (object):
                 23, 59, 59)
         ax.set_xlim (xmin, xmax)
 
-        ax.set_xlabel ('date')
         if one_unit:
-            ax.set_ylabel (unit)
+            ax.set_ylabel ('amount per day ({0})'.format (unit))
+        else:
+            ax.set_ylabel ('amount per day')
 
         ax.grid (True)
-        #self.ana.figure.tight_layout ()
         ax.figure.autofmt_xdate (rotation=45)
+        ax.figure.subplots_adjust (left=.05, right=.95)
 
     def ana_plot_block (self):
         """Make a line plot."""
         LOG_F ()
 
+        cadm = self.ana.cadm
         tadm = self.ana.tadm
-        if np.sum (tadm.checks) == 0:
+        if np.sum (cadm.checks) + np.sum (tadm.checks) == 0:
             return
 
         ax = self.ana.figure.add_subplot (111)
@@ -1204,6 +1226,62 @@ class MainWindow (object):
             return
         sel_ti = None
         sel_tf = None
+
+        counting_activities = []
+
+        for i, activity in enumerate (cadm.activities):
+            if not cadm.checks[i]:
+                continue
+            entries = sorted (self.log.entries[activity])
+            if not len (entries):
+                continue
+            counting_activities.append (activity.name)
+            n_activity = len (counting_activities) - 1
+            di = entries[0].date
+            ti = datetime.datetime (di.year, di.month, di.day)
+            df = entries[-1].date
+            tf = datetime.datetime (df.year, df.month, df.day, 23, 59, 59)
+            if ti > spec_tf or tf < spec_ti:
+                continue
+            if sel_ti == None or ti < sel_ti:
+                sel_ti = ti
+            if sel_tf == None or tf > sel_tf:
+                sel_tf = tf
+
+            block_xs = []
+            block_ys = []
+
+            last_date = di - datetime.timedelta (days=1)
+            for entry in entries:
+                date = entry.date
+                if date == last_date:
+                    continue
+                last_date = date
+                prev_day = datetime.datetime (
+                        date.year, date.month, date.day, 0, 0)
+                next_day = prev_day + datetime.timedelta (days=1.)
+                hours1 = - 2 * n_activity - 3
+                hours2 = - 2 * n_activity - 1
+                block_x = [prev_day, prev_day, next_day, next_day]
+                block_y = [hours1, hours2, hours2, hours1]
+                block_xs.append (block_x)
+                block_ys.append (block_y)
+
+            # now use None to separate polygons
+            call_list = []
+            for xtips, ytips in izip (block_xs, block_ys):
+                call_list.append (xtips)
+                call_list.append (ytips)
+
+            color = cadm.colors[i]
+            colormax = 65535
+            mpl_color = (
+                color.red / colormax,
+                color.green / colormax,
+                color.blue / colormax)
+
+            ax.fill (*call_list,
+                    edgecolor='none', facecolor=mpl_color, alpha=0.3)
 
         for i, activity in enumerate (tadm.activities):
             if not tadm.checks[i]:
@@ -1261,8 +1339,23 @@ class MainWindow (object):
 
             ax.fill (*call_list,
                     edgecolor='none', facecolor=mpl_color, alpha=0.3)
-            ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
-            ax.yaxis.set_major_locator (mpl.ticker.MultipleLocator (4))
+
+        hour_tick_locs = np.arange (0, 24, 4)
+        counting_tick_locs = np.arange (
+                -2 * len (counting_activities), 0, 2)
+        ax.yaxis.set_major_locator (mpl.ticker.FixedLocator (
+            np.r_[counting_tick_locs, hour_tick_locs]))
+
+        def ff (val, i):
+            if val >= 0:
+                return '{0}:00'.format (val)
+            else:
+                return counting_activities[-val//2 - 1]
+
+        ax.yaxis.set_major_formatter (mpl.ticker.FuncFormatter (ff))
+
+        ax.xaxis.set_major_locator (mpl.ticker.MaxNLocator (20))
+        ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
 
         xmin = max (spec_ti, sel_ti)
         xmin = datetime.datetime (xmin.year, xmin.month, xmin.day)
@@ -1271,11 +1364,11 @@ class MainWindow (object):
                 23, 59, 59)
         ax.set_xlim (xmin, xmax)
 
-        ax.set_ylim (24 , 0)
-        ax.set_xlabel ('date')
+        ax.set_ylim (24, -2 * len (counting_activities) - 1)
         ax.set_ylabel ('hour')
         #self.ana.figure.tight_layout ()
         ax.figure.autofmt_xdate (rotation=45)
+        ax.figure.subplots_adjust (left=.05, right=.95)
 
 
     # callbacks --------------------------------------------------------------
@@ -1323,6 +1416,9 @@ class MainWindow (object):
     def cb_save (self, whence, *args):
         """Handle the Save As action."""
         LOG_F ()
+        if not self.app.filename:
+            self.cb_save_as (whence, *args)
+            return
         self.app.save ()
         self.set_status ('load', 'Saved {0}.'.format (self.app.filename))
 
@@ -1375,12 +1471,39 @@ class MainWindow (object):
             filename = dialog.get_filename ()
         else:
             filename = None
+        dialog.destroy ()
         if filename:
-            importer = manateeimport.TimeRecordingImporter (filename, self.log)
+            pad = self.pad
+            conv_dialog = gtk.Dialog ('Default task',
+                    self.window,
+                    gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+                    (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
+                        gtk.STOCK_OK, gtk.RESPONSE_OK))
+            hbox = gtk.HBox (False, pad)
+            conv_dialog.vbox.pack_start (hbox)
+
+            hbox.pack_start (make_label ('When not indicated, task is: '),
+                    False, padding=pad)
+            combo = gtk.combo_box_new_text ()
+            hbox.pack_start (combo, True, padding=pad)
+            combo.append_text ('(none)')
+            combo.set_active (0)
+            activities = sorted (self.log.timing_activities)
+            for activity in sorted (self.log.timing_activities):
+                combo.append_text (activity.name)
+
+            conv_dialog.show_all ()
+            response = conv_dialog.run ()
+            i_activity = combo.get_active () - 1
+            conv_dialog.destroy ()
+            if response == gtk.RESPONSE_CANCEL:
+                return
+            default = activities[i_activity].name if i_activity >= 0 else None
+            importer = manateeimport.TimeRecordingImporter (
+                    filename, self.log, default=default)
             n_imported = importer.do_import ()
             self.sync_timing_activities ()
             self.modify ('import', 'Imported {0} entries.'.format (n_imported))
-        dialog.destroy ()
 
     def cb_notebook_page_switch (self, whence, page_num, *args):
         """Switch notebook page."""
@@ -1452,8 +1575,15 @@ class MainWindow (object):
             hbox.pack_start (make_label (new_unit))
             dialog.show_all ()
             response = dialog.run ()
-            factor = float (entry.get_text ())
+            entry_text = entry.get_text ()
             dialog.destroy ()
+            try:
+                factor = float (entry_text)
+            except:
+                self.set_status ('counting',
+                        'Could not interpret conversion factor "{0}".'.format (
+                            entry_text))
+                return
             if response == gtk.RESPONSE_CANCEL:
                 return
             self.log.change_units (activity.name, new_unit, factor)
