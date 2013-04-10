@@ -590,31 +590,8 @@ class MainWindow (object):
         combo.set_active (0)
         combo.connect ('changed', self.sync_ana_plot_update)
 
-        paned = gtk.VPaned ()
-        box_main.pack_start (paned)
-
-        box_conf_plus_range = gtk.VBox (False, pad)
-        paned.add1 (box_conf_plus_range)
-        box_conf_plus_range.set_border_width (pad)
-
-        box_conf = gtk.HBox (True, pad)
-        box_conf_plus_range.pack_start (box_conf, True, padding=0)
-        #box_conf.set_border_width (pad)
-
-        self.ana.cadm_sw = gtk.ScrolledWindow ()
-        self.ana.cadm_sw.set_size_request (5, 180)
-        box_conf.pack_start (self.ana.cadm_sw, True, padding=pad)
-        self.ana.tadm_sw = gtk.ScrolledWindow ()
-        box_conf.pack_start (self.ana.tadm_sw, True, padding=pad)
-        self.sync_ana_activities ()
-
-        box_opts_sw = gtk.ScrolledWindow ()
-        box_conf.pack_start (box_opts_sw)
-        box_opts = self.ana.box_opts = gtk.VBox (False, pad)
-        box_opts_sw.add_with_viewport (box_opts)
-
         box_range = gtk.HBox (False, pad)
-        box_conf_plus_range.pack_start (box_range, expand=False, padding=0)
+        box_main.pack_start (box_range, expand=False, padding=0)
         box_range.set_border_width (0)
 
         box_range.pack_start (make_label ('start date (Y/M/D):'), expand=False)
@@ -643,17 +620,37 @@ class MainWindow (object):
         box_range.pack_start (self.ana.spin_eD, expand=False)
         self.ana.spin_eD.connect ('value-changed', self.sync_ana_plot_update)
 
-        self.setup_ana_range ()
-
         box_range.pack_start (gtk.VSeparator (), expand=False)
+        box_range.set_border_width (pad)
 
         button_save = gtk.Button (label='_Save Plot')
-        box_range.pack_start (button_save, expand=False, padding=pad)
+        box_range.pack_start (button_save, expand=True)
         button_save.connect ('clicked', self.cb_ana_save_plot)
+
+        paned = gtk.VPaned ()
+        box_main.pack_start (paned)
+
+        box_conf = gtk.HBox (True, pad)
+        paned.add1 (box_conf)
+        #box_conf.set_border_width (pad)
+
+        self.ana.cadm_sw = gtk.ScrolledWindow ()
+        self.ana.cadm_sw.set_size_request (5, 180)
+        box_conf.pack_start (self.ana.cadm_sw, True, padding=pad)
+        self.ana.tadm_sw = gtk.ScrolledWindow ()
+        box_conf.pack_start (self.ana.tadm_sw, True, padding=pad)
+
+        box_opts_sw = gtk.ScrolledWindow ()
+        box_conf.pack_start (box_opts_sw, padding=pad)
+        box_opts = self.ana.box_opts = gtk.VBox (False, pad)
+        box_opts_sw.add_with_viewport (box_opts)
 
         self.ana.frame_plot = gtk.Frame ('Plot')
         paned.add2 (self.ana.frame_plot)
         self.ana.frame_plot.set_border_width (0)
+
+        self.sync_ana_activities ()
+        self.setup_ana_range ()
         self.sync_ana_plot_update ()
 
     def build_plot_options_line (self):
@@ -835,6 +832,7 @@ class MainWindow (object):
 
             cell_toggle = gtk.CellRendererToggle ()
             col_toggle = gtk.TreeViewColumn ('toggle', cell_toggle, active=0)
+            col_toggle.set_clickable (True)
             model_tv.insert_column (col_toggle, 0)
             cell_toggle.connect (
                     'toggled', self.cb_ana_activity_toggle, model)
@@ -1197,6 +1195,7 @@ class MainWindow (object):
                 23, 59, 59)
         ax.set_xlim (xmin, xmax)
         n_days = timedelta_to_seconds (xmax - xmin) / 86400
+        # TODO: choose ticks more carefully
         ax.xaxis.set_major_locator (mpl.ticker.MaxNLocator (min (n_days, 20)))
         ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
 
@@ -1214,7 +1213,7 @@ class MainWindow (object):
                 prop=mpl.font_manager.FontProperties (size='small'),
                 ncol=int (np.ceil (len (labels) / 2)))
 
-        ax.figure.subplots_adjust (left=.05, right=.97, top=.87)
+        ax.figure.subplots_adjust (left=.08, right=.97, top=.87)
         ax.figure.suptitle ('Amounts Summary',
                 horizontalalignment='right', x=.97, y=.93, weight='bold')
 
@@ -1227,14 +1226,14 @@ class MainWindow (object):
         if np.sum (cadm.checks) + np.sum (tadm.checks) == 0:
             return
 
-        ax = self.ana.figure.add_subplot (111)
-        ax.patch.set_facecolor ('white')
-
         spec_ti, spec_tf = self.ana_get_range ()
         if spec_ti >= spec_tf:
             return
         sel_ti = None
         sel_tf = None
+
+        ax = self.ana.figure.add_subplot (111)
+        ax.patch.set_facecolor ('white')
 
         counting_activities = []
         n_counting_activities = np.sum (cadm.checks)
@@ -1401,7 +1400,7 @@ class MainWindow (object):
         ax.axhline (-0.5, color='.8', ls='--')
 
         ax.figure.autofmt_xdate (rotation=45)
-        ax.figure.subplots_adjust (left=.05, right=.97)
+        ax.figure.subplots_adjust (left=.08, right=.97)
         ax.figure.suptitle ('Timing Summary',
                 horizontalalignment='right', x=.97, y=.96, weight='bold')
 
