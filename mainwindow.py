@@ -671,6 +671,8 @@ class MainWindow (object):
         self.ana.opts.radio_bins.connect ('toggled', self.sync_ana_plot_update)
         self.ana.opts.spin_bin = spin = gtk.SpinButton ()
         box_bin.pack_start (spin, False)
+        w, h = spin.get_size_request ()
+        spin.set_size_request (60, h)
         adj = gtk.Adjustment (
                 value=1, lower=1, upper=sys.maxint, step_incr=1)
         spin.set_adjustment (adj)
@@ -697,6 +699,22 @@ class MainWindow (object):
         self.ana.opts.check_errors.set_active (False)
         self.ana.opts.check_errors.connect ('toggled', self.sync_ana_plot_update)
 
+        box_ticks = gtk.HBox (False, pad)
+        box_opts.pack_start (box_ticks, False)
+        self.ana.opts.check_ticks = check_ticks = gtk.CheckButton (
+                'max # of xticks')
+        box_ticks.pack_start (self.ana.opts.check_ticks)
+        self.ana.opts.check_ticks.connect ('toggled', self.sync_ana_plot_update)
+        self.ana.opts.spin_ticks = spin = gtk.SpinButton ()
+        box_ticks.pack_start (spin, False)
+        spin.set_size_request (60, h)
+        adj = gtk.Adjustment (
+                value=1, lower=1, upper=sys.maxint, step_incr=1)
+        spin.set_adjustment (adj)
+        spin.set_value (10)
+        spin.connect (
+                'value-changed', self.sync_ana_plot_update)
+
         self.window.show_all ()
 
     def build_plot_options_block (self):
@@ -707,6 +725,23 @@ class MainWindow (object):
         self.ana.plot_type = 1
         box_opts = self.ana.box_opts
         box_opts.foreach (box_opts.remove)
+
+        box_ticks = gtk.HBox (False, pad)
+        box_opts.pack_start (box_ticks, False)
+        self.ana.opts.check_ticks = check_ticks = gtk.CheckButton (
+                'max # of xticks')
+        box_ticks.pack_start (self.ana.opts.check_ticks)
+        self.ana.opts.check_ticks.connect ('toggled', self.sync_ana_plot_update)
+        self.ana.opts.spin_ticks = spin = gtk.SpinButton ()
+        box_ticks.pack_start (spin, False)
+        w, h = spin.get_size_request ()
+        spin.set_size_request (60, h)
+        adj = gtk.Adjustment (
+                value=1, lower=1, upper=sys.maxint, step_incr=1)
+        spin.set_adjustment (adj)
+        spin.set_value (10)
+        spin.connect (
+                'value-changed', self.sync_ana_plot_update)
 
         self.window.show_all ()
 
@@ -1202,7 +1237,11 @@ class MainWindow (object):
                 for n in xrange (n_days + 2)]
         xticks = list (all_xticks)
         skip = 1
-        while len (xticks) > 20:
+        if self.ana.opts.check_ticks.get_active ():
+            max_xticks = self.ana.opts.spin_ticks.get_value_as_int ()
+        else:
+            max_xticks = 20
+        while len (xticks) > max_xticks:
             skip += 1
             xticks = all_xticks[::skip]
         ax.set_xticks (xticks)
@@ -1402,7 +1441,11 @@ class MainWindow (object):
                 for n in xrange (n_days + 2)]
         xticks = list (all_xticks)
         skip = 1
-        while len (xticks) > 20:
+        if self.ana.opts.check_ticks.get_active ():
+            max_xticks = self.ana.opts.spin_ticks.get_value_as_int ()
+        else:
+            max_xticks = 20
+        while len (xticks) > max_xticks:
             skip += 1
             xticks = all_xticks[::skip]
         ax.set_xticks (xticks)
