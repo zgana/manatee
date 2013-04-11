@@ -833,6 +833,8 @@ class MainWindow (object):
             cell_toggle = gtk.CellRendererToggle ()
             col_toggle = gtk.TreeViewColumn ('toggle', cell_toggle, active=0)
             col_toggle.set_clickable (True)
+            col_toggle.connect (
+                    'clicked', self.cb_ana_activity_toggle_all, model, sw)
             model_tv.insert_column (col_toggle, 0)
             cell_toggle.connect (
                     'toggled', self.cb_ana_activity_toggle, model)
@@ -1194,9 +1196,16 @@ class MainWindow (object):
         xmax = datetime.datetime (xmax.year, xmax.month, xmax.day,
                 23, 59, 59)
         ax.set_xlim (xmin, xmax)
-        n_days = timedelta_to_seconds (xmax - xmin) / 86400
-        # TODO: choose ticks more carefully
-        ax.xaxis.set_major_locator (mpl.ticker.MaxNLocator (min (n_days, 20)))
+        n_days = int (timedelta_to_seconds (xmax - xmin) / 86400)
+
+        all_xticks = [xmin + datetime.timedelta (days=n)
+                for n in xrange (n_days + 2)]
+        xticks = list (all_xticks)
+        skip = 1
+        while len (xticks) > 20:
+            skip += 1
+            xticks = all_xticks[::skip]
+        ax.set_xticks (xticks)
         ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
 
         if one_unit:
@@ -1387,9 +1396,22 @@ class MainWindow (object):
         xmax = datetime.datetime (xmax.year, xmax.month, xmax.day,
                 23, 59, 59)
         ax.set_xlim (xmin, xmax)
-        n_days = timedelta_to_seconds (xmax - xmin) / 86400
-        ax.xaxis.set_major_locator (mpl.ticker.MaxNLocator (min (n_days, 20)))
+
+        n_days = int (timedelta_to_seconds (xmax - xmin) / 86400)
+        all_xticks = [xmin + datetime.timedelta (days=n)
+                for n in xrange (n_days + 2)]
+        xticks = list (all_xticks)
+        skip = 1
+        while len (xticks) > 20:
+            skip += 1
+            xticks = all_xticks[::skip]
+        ax.set_xticks (xticks)
         ax.xaxis.set_major_formatter (mpl.dates.DateFormatter ('%Y.%m.%d'))
+
+        for xtick in xticks:
+            ax.axvline (xtick, color='.8', ls=':', zorder=-10)
+        for ytick in (0, 4, 8, 12, 16, 20):
+            ax.axhline (ytick, color='.8', ls=':', zorder=-10)
 
         ax.set_ylim (24, -2 * len (counting_activities) - 2)
         ax.set_ylabel ('hour')
@@ -1397,7 +1419,7 @@ class MainWindow (object):
         if n_timing_activities:
             ax.legend (ncol=n_timing_activities,
                     loc='lower left', bbox_to_anchor=(0,1), borderaxespad=0)
-        ax.axhline (-0.5, color='.8', ls='--')
+        #ax.axhline (-0.5, color='.8', ls='--')
 
         ax.figure.autofmt_xdate (rotation=45)
         ax.figure.subplots_adjust (left=.08, right=.97)
@@ -1740,8 +1762,18 @@ class MainWindow (object):
         Y = self.counting.spin_Y.get_value_as_int ()
         M = self.counting.spin_M.get_value_as_int ()
         D = self.counting.spin_D.get_value_as_int ()
-        n = float (self.counting.entry_n.get_text ())
-        error = float (self.counting.entry_error.get_text ())
+        try:
+            n = float (self.counting.entry_n.get_text ())
+        except:
+            self.set_status ('could not read n = "{0}"'.format (
+                self.counting.entry_n.get_text ()))
+            return
+        try:
+            error = float (self.counting.entry_error.get_text ())
+        except:
+            self.set_status ('could not read error = "{0}"'.format (
+                self.counting.entry_error.get_text ()))
+            return
         note_buffer = self.counting.textview_note.get_buffer ()
         note = note_buffer.get_text (
                 note_buffer.get_start_iter (),
@@ -1941,6 +1973,13 @@ class MainWindow (object):
             except:
                 break
         self.timing.spin_eD.set_range (1, day - 1)
+
+    def cb_ana_activity_toggle_all (self, col, model, sw):
+        """A counting activity was toggled for plotting."""
+        LOG_F ()
+        model.toggle_all ()
+        self.sync_ana_plot_update ()
+        sw.queue_draw ()
 
     def cb_ana_activity_toggle (self, cell, path, model):
         """A counting activity was toggled for plotting."""
