@@ -4,6 +4,7 @@ import gtk
 
 from debug import *
 
+import numpy as np
 
 class CountingActivitiesModel (gtk.GenericTreeModel):
 
@@ -335,6 +336,14 @@ class ActivityDrawModel (gtk.GenericTreeModel):
     def toggle (self, path):
         row = int (path)
         self.checks[row] = not self.checks[row]
+
+    def toggle_all (self):
+        if np.sum (self.checks) == len (self.checks):
+            value = False
+        else:
+            value = True
+        for row in xrange (len (self.checks)):
+            self.checks[row] = value
 
     # Implementation of gtk.GenericTreeModel
 
