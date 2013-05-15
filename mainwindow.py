@@ -585,8 +585,8 @@ class MainWindow (object):
                 make_label ('Plot type:'), False, padding=pad)
         combo = self.ana.combo = gtk.combo_box_new_text ()
         box_combo.pack_start (combo, True, padding=pad)
-        combo.append_text ('line plot')
         combo.append_text ('block plot')
+        combo.append_text ('line plot')
         combo.set_active (0)
         combo.connect ('changed', self.sync_ana_plot_update)
 
@@ -902,15 +902,15 @@ class MainWindow (object):
             return
         self.ana_plot_clear ()
         if self.ana.combo.get_active () == 0:
-            if self.ana.plot_type != 0:
-                self.build_plot_options_line ()
-                self.ana.plot_type = 0
-            self.ana_plot_line ()
-        if self.ana.combo.get_active () == 1:
             if self.ana.plot_type != 1:
                 self.build_plot_options_block ()
                 self.ana.plot_type = 1
             self.ana_plot_block ()
+        if self.ana.combo.get_active () == 1:
+            if self.ana.plot_type != 0:
+                self.build_plot_options_line ()
+                self.ana.plot_type = 0
+            self.ana_plot_line ()
         self.window.show_all ()
 
     def set_title (self, title=None):
