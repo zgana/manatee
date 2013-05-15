@@ -1230,7 +1230,8 @@ class MainWindow (object):
         xmax = min (spec_tf, sel_tf)
         xmax = datetime.datetime (xmax.year, xmax.month, xmax.day,
                 23, 59, 59)
-        ax.set_xlim (xmin, xmax)
+        second = datetime.timedelta (seconds=1)
+        ax.set_xlim (xmin - second, xmax + second)
         n_days = int (timedelta_to_seconds (xmax - xmin) / 86400)
 
         all_xticks = [xmin + datetime.timedelta (days=n)
@@ -1333,7 +1334,7 @@ class MainWindow (object):
             block_ys = np.array (block_ys)
             alphas = np.array (alphas)
 
-            alpha_range = np.linspace (0, 1, 100)
+            alpha_range = np.linspace (0, 1.0001, 100)
             for a1, a2 in izip (alpha_range[:-1], alpha_range[1:]):
 
                 call_list = []
@@ -1434,7 +1435,8 @@ class MainWindow (object):
         xmax = min (spec_tf, sel_tf)
         xmax = datetime.datetime (xmax.year, xmax.month, xmax.day,
                 23, 59, 59)
-        ax.set_xlim (xmin, xmax)
+        second = datetime.timedelta (seconds=1)
+        ax.set_xlim (xmin - second, xmax + second)
 
         n_days = int (timedelta_to_seconds (xmax - xmin) / 86400)
         all_xticks = [xmin + datetime.timedelta (days=n)
