@@ -1253,7 +1253,6 @@ class MainWindow (object):
         else:
             ax.set_ylabel ('amount per day')
 
-        ax.grid (True)
         ax.figure.autofmt_xdate (rotation=45)
 
         legend = ax.legend (loc='lower left',
@@ -1286,6 +1285,7 @@ class MainWindow (object):
 
         counting_activities = []
         n_counting_activities = np.sum (cadm.checks)
+        n_timing_activities = np.sum (tadm.checks)
 
         one_day = datetime.timedelta (days=1)
 
@@ -1458,7 +1458,8 @@ class MainWindow (object):
         for ytick in (0, 4, 8, 12, 16, 20):
             ax.axhline (ytick, color='.8', ls=':', zorder=-10)
 
-        ax.set_ylim (24, -2 * len (counting_activities) - 2)
+        ymin = 24 if n_timing_activities else 0
+        ax.set_ylim (ymin, -2 * len (counting_activities) - 2)
         ax.set_ylabel ('hour')
 
         if n_timing_activities:
