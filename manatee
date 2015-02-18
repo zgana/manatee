@@ -3,8 +3,12 @@
 
 from __future__ import print_function
 
+import cmd
+import datetime
 from optparse import OptionParser
 import os
+
+import numpy as np
 
 from mainwindow import MainWindow
 import manateelog
@@ -13,6 +17,8 @@ from manateelog import get_log_from_file, write_log_to_file
 import logging
 from debug import LOGGER
 
+from tablegen import Table, Column, Row
+
 class Manatee (object):
 
     """Manatee app."""
@@ -20,10 +26,14 @@ class Manatee (object):
     def __init__ (self):
         self.filename = ''
         self.window = None
+        self.log = None
 
     def run (self, args=[]):
         usage = 'usage: %prog {[log file]}'
         parser = OptionParser (version=0.1, usage=usage)
+        parser.add_option ('-c', '--cli', dest='cli',
+                default=False, action='store_true',
+                help='initiate CLI mode')
         parser.add_option ('--loglevel', dest='loglevel',
                 default='WARN', metavar='LEVEL',
                 help='use \'logging\' module log level LEVEL')
@@ -38,6 +48,8 @@ class Manatee (object):
             filename = args[0]
             if os.path.exists (filename):
                 self.load_file (filename)
+                if not opts.cli:
+                    self.window = MainWindow (self, self.log)
             else:
                 parser.error ('"{0}" does not exist'.format (filename))
         elif len (args) > 1:
@@ -47,13 +59,18 @@ class Manatee (object):
                 with open (self.last_file) as f:
                     filename = f.readline ().rstrip ()
                 if filename and os.path.exists (filename):
+                    if not opts.cli:
+                        self.window = MainWindow (self)
                     self.load_file (filename)
 
-        if self.window is None:
-            self.window = MainWindow (self)
-            self.log = self.window.log
+        if not opts.cli:
+            if self.window is None:
+                self.window = MainWindow (self)
+                self.log = self.window.log
 
-        self.window.main ()
+            self.window.main ()
+        else:
+            self.cli ()
 
         # cleanup at end
         if not os.path.exists (self.conf_dir):
@@ -73,23 +90,507 @@ class Manatee (object):
     def load_file (self, filename):
         self.filename = filename
         self.log = get_log_from_file (filename)
-        if self.window is None:
-            self.window = MainWindow (self, self.log)
-        else:
+        if self.window is not None:
             self.window.set_log (self.log)
 
     def new_log (self):
         self.filename = ''
         self.log = manateelog.Log ()
-        self.window.set_log (self.log)
+        if self.window is not None:
+            self.window.set_log (self.log)
 
     def save (self):
         write_log_to_file (self.log, self.filename)
-        self.window.was_modified = False
+        if self.window is not None:
+            self.window.was_modified = False
 
     def save_as (self, filename):
         self.filename = filename
         self.save ()
+
+    def cli (self):
+        """Run the CLI."""
+
+        class ManateeCLI (cmd.Cmd):
+
+            def __init__ (cli):
+                cmd.Cmd.__init__ (cli)
+                cli.prompt = 'manatee> '
+
+            def emptyline (cli):
+                """Do nothing on empty command."""
+                if cli.lastcmd:
+                    saved, cli.lastcmd = cli.lastcmd, ''
+                    res = cli.onecmd ('\n')
+                    cli.lastcmd, saved = saved, cli.lastcmd
+                    return res
+
+            def do_EOF (cli, line):
+                """Exit `manatee`."""
+                print ()
+                return True
+
+            def do_quit (cli, line):
+                """Exit `manatee`."""
+                print ()
+                return True
+
+            def do_current (cli, line):
+                """Show the current ManateeLog filename."""
+                # ignore args
+                print (self.filename)
+
+            def do_new (cli, line):
+                """Create a new log."""
+                self.new_log ()
+                print ('new file created')
+
+            def do_load (cli, line):
+                """load [filename]
+                Load the specified ManateeLog file."""
+                a = line.split ()
+                if len (a) == 1:
+                    filename = a[0]
+                    if os.path.exists (filename):
+                        if os.path.isfile (filename):
+                            self.load_file (filename)
+                            print ('loaded {0}'.format (filename))
+                        else:
+                            print ('cannot load {0}: not a file'.format (
+                                filename))
+                    else:
+                        print ('cannot access {0}: no such file')
+                else:
+                    print ('exactly one filename required')
+
+            def do_save (cli, line):
+                """save {[filename]}
+                Save the ManateeLog in the specified filename if given.
+                Otherwise, save in the current filename (if it exists)."""
+                a = line.split ()
+                if len (a) >= 2:
+                    print ('exactly zero or one filenames required')
+                    return
+                if len (a) == 1:
+                    self.save_as (a[0])
+                else:
+                    if self.filename:
+                        self.save ()
+                    else:
+                        print ('provide filename for new file')
+                        return
+                print ('saved {0}'.format (self.filename))
+
+            def do_w (cli, line):
+                """Shortcut for 'save'."""
+                cli.do_save (line)
+
+            def do_wq (cli, line):
+                """Shortcut for 'save' followed by 'quit'."""
+                cli.do_save (line)
+                return True
+
+            def help_ls (cli):
+                print ("""ls
+                Show the activities in the current ManateeLog.\n""" +
+                """ls {[n]} [activity]
+                Show entries for [activity].  If [n] is given and positive,
+                show the first [n] entries.  For negative [n], show the latest
+                entries.""")
+
+            def do_ls (cli, line):
+                if self.log is None:
+                    print ('no log is active')
+                else:
+                    log = self.log
+
+                args = line.split ()
+                if len (args) == 0:
+                    print ('counting activities:')
+                    for activity in log.counting_activities:
+                        print ('{0} [{1}]'.format (
+                            activity.name, activity.unit))
+
+                    print ('\ntiming activities:')
+                    for activity in log.timing_activities:
+                        print ('{0}'.format (activity.name))
+                    return
+
+                try:
+                    n = int (args[0])
+                    args = args[1:]
+                except:
+                    n = None
+
+                for arg in args:
+                    try:
+                        entries = self.log.get_entries (arg)
+                    except:
+                        print ('{0}: activity not found'.format (arg))
+                        continue
+                    if len (entries) == 0:
+                        print ('{0} enteries: (none)'.format (arg))
+                        continue
+                    print ('{0} enteries:'.format (arg))
+                    idx = np.arange (len (entries))
+                    try:
+                        entries[0].n
+                        is_count = True
+                    except:
+                        is_count = False
+
+                    if n is None:
+                        left, right = 0, len (entries)
+                    elif n >= 0:
+                        left, right = 0, min (n, len (entries))
+                    elif n < 0:
+                        left, right = max (n, -len (entries)), len (entries)
+
+                    if is_count:
+                        table = Table (
+                                Column ('id'),
+                                Column ('date'),
+                                Column ('n'),
+                                Column ('+/-'),
+                                Column ('note', align='l'))
+                        for (i, entry) in zip (idx, entries)[left:right]:
+                            table.add_row (i, entry.date,
+                                    entry.n, entry.error, entry.note)
+                    else:
+                        table = Table (
+                                Column ('id'),
+                                Column ('start time'),
+                                Column ('end time'),
+                                Column ('note', align='l'))
+                        for (i, entry) in zip (idx, entries)[left:right]:
+                            table.add_row (i, entry.start_time,
+                                    entry.end_time, entry.note)
+
+                    print (table)
+
+            def complete_ls (cli, text, line, i, j):
+                activity_names = sorted (
+                        [a.name for a in self.log.counting_activities]
+                        + [a.name for a in self.log.timing_activities])
+                if not text:
+                    return activity_names
+                else:
+                    return [name
+                            for name in activity_names
+                            if name.startswith (text)]
+
+            def help_count (cli):
+                print ("""count [activity] [n] {[error]}
+                Add an entry for [n] units of [activity] for today, including
+                the error +/- [error] if given.\n""" + 
+                """count [activity] [year-month-day] [n] {[error]}
+                Add an entry for [n] units of [activity] on the given date,
+                including the error +/- [error] if given.""")
+
+            def do_count (cli, line):
+                halves = line.split ('|')
+                args_str = halves[0]
+                all_args = args_str.split ()
+                if len (all_args) == 0:
+                    print ('activity name and arguments required')
+                    return
+                elif len (all_args) == 1:
+                    print ('arguments required')
+                    return
+
+                if len (halves) >= 2:
+                    note = ''.join (halves[1:]).strip ()
+                else:
+                    note = ''
+
+                activity_name = all_args[0]
+                try:
+                    activity = self.log.get_activity (activity_name)
+                except:
+                    print ('{0}: activity not found'.format (activity_name))
+                    return
+
+                args = all_args[1:]
+
+                def datestr_to_ymd (s):
+                    return map (int, s.split ('-'))
+
+                if len (args) == 1:
+                    # interpret as count for today
+                    date = datetime.date.today ()
+                    try:
+                        n = float (args[0])
+                    except:
+                        print ('could not parse count')
+                        return
+                    error = 0
+                elif len (args) == 2:
+                    # either date + count or [today's] count + error
+                    try:
+                        date = datetime.date (*datestr_to_ymd (args[0]))
+                        try:
+                            n = float (args[1])
+                        except:
+                            print ('could not parse count')
+                            return
+                        error = 0
+                    except:
+                        date = datetime.date.today ()
+                        try:
+                            n = float (args[0])
+                        except:
+                            print ('could not parse count')
+                            return
+                        try:
+                            error = float (args[1])
+                        except:
+                            print ('could not parse error')
+                            return
+                elif len (args) == 3:
+                    try:
+                        date = datetime.date (*datestr_to_ymd (args[0]))
+                    except:
+                        print ('could not parse date')
+                        return
+                    try:
+                        n = float (args[1])
+                    except:
+                        print ('could not parse count')
+                        return
+                    try:
+                        error = float (args[2])
+                    except:
+                        print ('could not parse error')
+                        return
+
+                self.log.create_entry (
+                        activity_name, date, n, error=error, note=note)
+
+            def complete_count (cli, text, line, i, j):
+                activity_names = sorted (
+                        [a.name for a in self.log.counting_activities])
+                if not text:
+                    return activity_names
+                else:
+                    return [name
+                            for name in activity_names
+                            if name.startswith (text)]
+
+            def do_delete (cli, line):
+                """delete [activity] [n]
+                Delete the [n]th entry for [activity]."""
+                args = line.split ()
+                if len (args) == 0:
+                    print ('activity and entry number required')
+                    return
+                activity_name = args[0]
+                try:
+                    entries = self.log.get_entries (activity_name)
+                except:
+                    print ('{0}: activity not found'.format (activity_name))
+                    return
+                try:
+                    n = int (args[1])
+                except:
+                    print ('could not parse entry number')
+                    return
+                if 0 <= n and n < len (entries):
+                    entry = entries[n]
+                    try:
+                        entry.n
+                        is_count = True
+                    except:
+                        is_count = False
+
+                    note_str = ' | ' + entry.note if entry.note else ''
+
+                    if is_count:
+                        restore = '[deleted] count {0} ' \
+                                '{1:04d}-{2:02d}-{3:02d} ' \
+                                '{4} {5}{6}'.format (
+                                        activity_name,
+                                        entry.date.year, entry.date.month,
+                                        entry.date.day, entry.n,
+                                        entry.error, note_str)
+                    else:
+                        restore = '[deleted] time {0} {1} {2}{3}'.format (
+                                activity_name, entry.start_time,
+                                entry.end_time, note_str)
+                    print (restore)
+                    entries.pop (n)
+
+            def complete_delete (cli, text, line, i, j):
+                activity_names = sorted (
+                        [a.name for a in self.log.counting_activities]
+                        + [a.name for a in self.log.timing_activities])
+                words = line.split ()
+                if len (words) <= 2:
+                    if not text:
+                        return activity_names
+                    else:
+                        return [name
+                                for name in activity_names
+                                if name.startswith (text)]
+                elif len (words) == 3:
+                    try:
+                        entries = self.log.get_entries (words[1])
+                    except:
+                        return []
+                    if not text:
+                        return map (str, range (len (entries)))
+                    else:
+                        return [s
+                                for s in map (str, range (len (entries)))
+                                if s.startswith (text)]
+
+            def help_time (cli):
+                print (
+                'time [activity] {[start date]} [start time] {[end date]} '
+                '{[end time]}' + """
+                Add timing for [activity], assuming today for missing dates and
+                now for a missing end time."""
+                )
+
+            def do_time (cli, line):
+                halves = line.split ('|')
+                args_str = halves[0]
+                all_args = args_str.split ()
+                if len (all_args) == 0:
+                    print ('activity name and arguments required')
+                    return
+                elif len (all_args) == 1:
+                    print ('arguments required')
+                    return
+
+                if len (halves) >= 2:
+                    note = ''.join (halves[1:]).strip ()
+                else:
+                    note = ''
+
+                activity_name = all_args[0]
+                try:
+                    activity = self.log.get_activity (activity_name)
+                except:
+                    print ('{0}: activity not found'.format (activity_name))
+                    return
+
+                args = all_args[1:]
+
+                def datestr_to_ymd (s):
+                    return map (int, s.split ('-'))
+
+                def timestr_to_hm (s):
+                    return map (int, s.split (':'))[:2]
+
+                now = datetime.datetime.now ()
+                now = datetime.datetime (
+                        now.year, now.month, now.day,
+                        now.hour, now.minute)
+                if len (args) == 1:
+                    # interpret as start time, with end time = now
+                    today = datetime.date.today ()
+                    try:
+                        start_time = datetime.datetime (
+                                today.year, today.month, today.day,
+                                *timestr_to_hm (args[0]))
+                    except:
+                        print ('could not parse start time')
+                        return
+                    end_time = now
+                elif len (args) == 2:
+                    # interpret as start date + time, or start time + end time
+                    try:
+                        start_time = datetime.datetime (
+                                *(datestr_to_ymd (args[0])
+                                    + timestr_to_hm (args[1])))
+                        end_time = now
+                    except:
+                        today = datetime.date.today ()
+                        try:
+                            start_time = datetime.datetime (
+                                    today.year, today.month, today.day,
+                                    *timestr_to_hm (args[0]))
+                        except:
+                            print ('could not parse start time')
+                            return
+                        try:
+                            end_time = datetime.datetime (
+                                    today.year, today.month, today.day,
+                                    *timestr_to_hm (args[1]))
+                        except:
+                            print ('could not parse end time')
+                            return
+                elif len (args) == 3:
+                    # interpret as start date, start time and end time
+                    try:
+                        the_date = datetime.date (*datestr_to_ymd (args[0]))
+                    except:
+                        print ('could not parse start date')
+                        return
+                    try:
+                        start_time = datetime.datetime (
+                                the_date.year, the_date.month, the_date.day,
+                                *timestr_to_hm (args[1]))
+                    except:
+                        print ('could not parse start time')
+                        return
+                    try:
+                        end_time = datetime.datetime (
+                                the_date.year, the_date.month, the_date.day,
+                                *timestr_to_hm (args[2]))
+                    except:
+                        print ('could not parse end time')
+                        return
+                elif len (args) == 4:
+                    # interpret as start datetime and end datetime
+                    try:
+                        start_date = datetime.date (*datestr_to_ymd (args[0]))
+                    except:
+                        print ('could not parse start date')
+                        return
+                    try:
+                        start_time = datetime.datetime (
+                                start_date.year, start_date.month,
+                                start_date.day, *timestr_to_hm (args[1]))
+                    except:
+                        print ('could not parse start time')
+                        return
+                    try:
+                        end_date = datetime.date (*datestr_to_ymd (args[2]))
+                    except:
+                        print ('could not parse start date')
+                        return
+                    try:
+                        end_time = datetime.datetime (
+                                end_date.year, end_date.month,
+                                end_date.day, *timestr_to_hm (args[3]))
+                    except:
+                        print ('could not parse end time')
+                        return
+
+                else:
+                    print ('expected 1, 2, 3 or 4 arguments')
+                    return
+
+                self.log.create_entry (
+                        activity_name, start_time, end_time, note=note)
+
+            def complete_time (cli, text, line, i, j):
+                activity_names = sorted (
+                        [a.name for a in self.log.timing_activities])
+                if not text:
+                    return activity_names
+                else:
+                    return [name
+                            for name in activity_names
+                            if name.startswith (text)]
+
+            def do_gui (cli, line):
+                """Load the GUI."""
+                self.window = MainWindow (self, self.log)
+                self.window.main ()
+
+        ManateeCLI ().cmdloop ()
 
 if __name__ == '__main__':
     app = Manatee ()
