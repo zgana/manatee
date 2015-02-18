@@ -1314,6 +1314,8 @@ class MainWindow (object):
             alphas = []
 
             last_date = di - datetime.timedelta (days=1)
+            hours1 = - 2 * (n_counting_activities - n_activity - 1) - 3
+            hours2 = - 2 * (n_counting_activities - n_activity - 1) - 1
             for entry in entries:
                 date = entry.date
                 #if date == last_date:
@@ -1322,8 +1324,6 @@ class MainWindow (object):
                 prev_day = datetime.datetime (
                         date.year, date.month, date.day, 0, 0)
                 next_day = prev_day + one_day
-                hours1 = - 2 * (n_counting_activities - n_activity - 1) - 3
-                hours2 = - 2 * (n_counting_activities - n_activity - 1) - 1
                 block_x = [prev_day, prev_day, next_day, next_day]
                 block_y = [hours1, hours2, hours2, hours1]
                 block_xs.append (block_x)
@@ -1334,7 +1334,7 @@ class MainWindow (object):
             block_ys = np.array (block_ys)
             alphas = np.array (alphas)
 
-            alpha_range = np.linspace (0, 1.0001, 100)
+            alpha_range = np.linspace (0, 1.0001, 20)
             for a1, a2 in izip (alpha_range[:-1], alpha_range[1:]):
 
                 call_list = []
@@ -1471,6 +1471,7 @@ class MainWindow (object):
         ax.figure.subplots_adjust (left=.08, right=.97)
         ax.figure.suptitle ('Timing Summary',
                 horizontalalignment='right', x=.97, y=.96, weight='bold')
+
 
 
     # callbacks --------------------------------------------------------------
