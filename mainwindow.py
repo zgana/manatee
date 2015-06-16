@@ -386,7 +386,7 @@ class MainWindow (object):
         box_main.pack_start (table_add, expand=False, padding=pad)
         table_add.attach (
                 make_label ('date (Y/M/D):'), 0, 1, 0, 1)
-        
+
         box_add = gtk.HBox (False, pad)
         table_add.attach (box_add, 1, 2, 0, 1)
         self.counting.spin_Y = gtk.SpinButton ()
@@ -892,7 +892,7 @@ class MainWindow (object):
         self.ana.tadm = do_sync (self.ana.tadm_sw, self.log.timing_activities)
 
         self.window.show_all ()
-    
+
     def sync_ana_plot_update (self, *args):
         """Update the analysis plot."""
         LOG_F ()
@@ -1290,14 +1290,14 @@ class MainWindow (object):
         one_day = datetime.timedelta (days=1)
 
         for i, activity in enumerate (cadm.activities):
+            counting_activities.append (activity.name)
+            n_activity = len (counting_activities) - 1
             if not cadm.checks[i]:
                 continue
             entries = sorted (self.log.entries[activity])
             if not len (entries):
                 continue
             activity_max = np.max ([entry.n for entry in entries])
-            counting_activities.append (activity.name)
-            n_activity = len (counting_activities) - 1
             di = entries[0].date
             ti = datetime.datetime (di.year, di.month, di.day)
             df = entries[-1].date
@@ -1416,7 +1416,7 @@ class MainWindow (object):
                 ax.fill (*call_list[2:],
                         edgecolor='none', facecolor=mpl_color, alpha=0.3)
 
-        hour_tick_locs = np.arange (0, 24, 4)
+        hour_tick_locs = np.arange (0, 24.1, 4)
         counting_tick_locs = np.arange (
                 -2 * len (counting_activities), 0, 2)
         ax.yaxis.set_major_locator (mpl.ticker.FixedLocator (
@@ -1424,7 +1424,7 @@ class MainWindow (object):
 
         def ff (val, i):
             if val >= 0:
-                return '{0}:00'.format (val)
+                return '{0}:00'.format (int (val))
             else:
                 return counting_activities[i]
 
@@ -1455,11 +1455,18 @@ class MainWindow (object):
 
         for xtick in xticks:
             ax.axvline (xtick, color='.8', ls=':', zorder=-10)
-        for ytick in (0, 4, 8, 12, 16, 20):
-            ax.axhline (ytick, color='.8', ls=':', zorder=-10)
 
-        ymin = 24 if n_timing_activities else 0
-        ax.set_ylim (ymin, -2 * len (counting_activities) - 2)
+        if n_timing_activities:
+            for ytick in (0, 4, 8, 12, 16, 20, 24):
+                ax.axhline (ytick, color='.8', ls=':', zorder=-10)
+            ymin = 24
+        else:
+            ymin = -.5
+        if n_counting_activities:
+            ymax = -(2 * len (counting_activities) + 1.5)
+        else:
+            ymax = 0
+        ax.set_ylim (ymin, ymax)
         ax.set_ylabel ('hour')
 
         if n_timing_activities:
@@ -1490,7 +1497,7 @@ class MainWindow (object):
             return
         self.app.new_log ()
         self.set_status ('load', 'Created a new log.')
-        
+
     def cb_open (self, whence, *args):
         """Handle the Open action."""
         LOG_F ()
@@ -1548,7 +1555,7 @@ class MainWindow (object):
             self.set_status ('load', 'Saved {0}.'.format (self.app.filename))
         dialog.destroy ()
         return response
-        
+
     def cb_quit (self, whence, *args):
         """Quit."""
         LOG_F ()
