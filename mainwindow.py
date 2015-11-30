@@ -1460,6 +1460,7 @@ class MainWindow (object):
             for ytick in (0, 4, 8, 12, 16, 20, 24):
                 ax.axhline (ytick, color='.8', ls=':', zorder=-10)
             ymin = 24
+            ax.set_ylabel ('hour')
         else:
             ymin = -.5
         if n_counting_activities:
@@ -1467,7 +1468,6 @@ class MainWindow (object):
         else:
             ymax = 0
         ax.set_ylim (ymin, ymax)
-        ax.set_ylabel ('hour')
 
         if n_timing_activities:
             ax.legend (ncol=n_timing_activities,
