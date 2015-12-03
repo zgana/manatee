@@ -1037,7 +1037,7 @@ class MainWindow (object):
         box_pad.set_border_width (self.pad)
         self.ana.frame_plot.add (box_pad)
         self.ana.frame_plot.set_label ('Plot')
-        fig = self.ana.figure = mpl.figure.Figure (
+        self.ana.figure = mpl.figure.Figure (
                 figsize=(6, 4), dpi=50)
         self.ana.canvas = mplgtkagg.FigureCanvasGTKAgg (self.ana.figure)
         box_pad.pack_start (self.ana.canvas)
@@ -1334,7 +1334,7 @@ class MainWindow (object):
             block_ys = np.array (block_ys)
             alphas = np.array (alphas)
 
-            alpha_range = np.linspace (0, 1.0001, 20)
+            alpha_range = np.arange (0, 1.0001 + 1/20., 1/20.)
             for a1, a2 in izip (alpha_range[:-1], alpha_range[1:]):
 
                 call_list = []
@@ -1348,11 +1348,11 @@ class MainWindow (object):
                 mpl_color = (
                     color.red / colormax,
                     color.green / colormax,
-                    color.blue / colormax)
+                    color.blue / colormax,
+                    a1)
 
                 ax.fill (*call_list,
-                        edgecolor='none', facecolor=mpl_color,
-                        alpha=a2)
+                         edgecolor='none', facecolor=mpl_color)
 
         n_timing_activities = 0
         for i, activity in enumerate (tadm.activities):
@@ -1406,15 +1406,17 @@ class MainWindow (object):
             mpl_color = (
                 color.red / colormax,
                 color.green / colormax,
-                color.blue / colormax)
+                color.blue / colormax,
+                0.6
+            )
 
             n_timing_activities += 1
             ax.fill (*call_list[:2],
-                    edgecolor='none', facecolor=mpl_color, alpha=0.3,
+                    edgecolor='none', facecolor=mpl_color,
                     label=activity.name)
             if len (call_list) > 2:
                 ax.fill (*call_list[2:],
-                        edgecolor='none', facecolor=mpl_color, alpha=0.3)
+                         edgecolor='none', facecolor=mpl_color)
 
         hour_tick_locs = np.arange (0, 24.1, 4)
         counting_tick_locs = np.arange (

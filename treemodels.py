@@ -1,10 +1,13 @@
 # treemodels.py
 
+from __future__ import division
+
 import gtk
 
 from debug import *
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 class CountingActivitiesModel (gtk.GenericTreeModel):
 
@@ -46,7 +49,7 @@ class CountingActivitiesModel (gtk.GenericTreeModel):
             return activity.unit
         else:
             return None
-        
+
     def on_iter_next (self, rowref):
         if rowref == self.n_rows - 1 or self.n_rows == 0:
             return None
@@ -114,7 +117,7 @@ class TimingActivitiesModel (gtk.GenericTreeModel):
             return activity.name
         else:
             return None
-        
+
     def on_iter_next (self, rowref):
         if rowref == self.n_rows - 1 or self.n_rows == 0:
             return None
@@ -193,7 +196,7 @@ class CountingEntriesModel (gtk.GenericTreeModel):
             return str (entry.note)
         else:
             return None
-        
+
     def on_iter_next (self, rowref):
         if rowref == self.n_rows - 1 or self.n_rows == 0:
             return None
@@ -273,7 +276,7 @@ class TimingEntriesModel (gtk.GenericTreeModel):
             return str (entry.note)
         else:
             return None
-        
+
     def on_iter_next (self, rowref):
         if rowref == self.n_rows - 1 or self.n_rows == 0:
             return None
@@ -313,18 +316,25 @@ class ActivityDrawModel (gtk.GenericTreeModel):
         self.checks = [
                 False for activity in self.activities]
         n = len (self.activities)
-        mpl_colors = [
-                (0.0, 0.0, 1.0),
-                (0.0, 0.5, 0.0),
-                (1.0, 0.0, 0.0),
-                (0.0, 0.75, 0.75),
-                (0.75, 0.0, 0.75),
-                (0.75, 0.75, 0.0),
-                (0.0, 0.0, 0.0),
-                (0.0, 0.0, 1.0) ]
-        n_color = len (mpl_colors)
+        ##mpl_colors = [
+        ##        (0.0, 0.0, 1.0),
+        ##        (0.0, 0.5, 0.0),
+        ##        (1.0, 0.0, 0.0),
+        ##        (0.0, 0.75, 0.75),
+        ##        (0.75, 0.0, 0.75),
+        ##        (0.75, 0.75, 0.0),
+        ##        (0.0, 0.0, 0.0),
+        ##        (0.0, 0.0, 1.0) ]
+        ##n_color = len (mpl_colors)
+        ##self.colors = [
+        ##        gtk.gdk.Color (*mpl_colors[i % n_color]) for i in xrange (n)]
+        cm = plt.get_cmap ('rainbow')
         self.colors = [
-                gtk.gdk.Color (*mpl_colors[i % n_color]) for i in xrange (n)]
+            gtk.gdk.Color (*cm (i / n)[:3])
+            for i in xrange (n)]
+        self.color_tuples = [
+            cm (i / n)[:3]
+            for i in xrange (n)]
         self.alphas = [
                 int (.8 * 65535) for activity in self.activities]
 
@@ -381,11 +391,12 @@ class ActivityDrawModel (gtk.GenericTreeModel):
                     gtk.gdk.COLORSPACE_RGB, True, 8, 16, 16)
             color = self.colors[row]
             color_str = '{0:02x}{1:02x}{2:02x}{3:02x}'.format (
-                    color.red / 256, color.green / 256, color.blue / 256,
-                    self.alphas[row] / 256)
+                    *map (int,
+                         (color.red / 256, color.green / 256, color.blue / 256,
+                          self.alphas[row] / 256)))
             pb.fill (int (color_str, 16))
             return pb
-        
+
     def on_iter_next (self, rowref):
         if rowref == self.n_rows - 1 or self.n_rows == 0:
             return None
